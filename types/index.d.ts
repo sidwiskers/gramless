@@ -205,6 +205,7 @@ export class GramlessRouter {
   use(...middlewares: Array<MiddlewareFunction | MiddlewareFunction[]>): this;
   command(names: string | string[], ...handlers: HandlerFunction[]): this;
   action(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;
+  callback(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;
   hears(pattern: string | RegExp, ...handlers: HandlerFunction[]): this;
   on(trigger: string | FilterPredicate, ...handlers: HandlerFunction[]): this;
   group(filter?: FilterPredicate): GramlessRouter;

@@ -176,6 +176,16 @@ export class GramlessRouter {
   }
 
   /**
+   * Alias for action(): Registers a handler for callback query data.
+   * @param {string|RegExp} trigger
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  callback(trigger, ...handlers) {
+    return this.action(trigger, ...handlers);
+  }
+
+  /**
    * Matches message text or caption against a string or RegExp pattern.
    * @param {string|RegExp} pattern
    * @param {...Function} handlers
