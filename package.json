@@ -29,6 +29,20 @@
     "zero-dependency",
     "framework"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidwiskers/gramless.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sidwiskers/gramless/issues"
+  },
+  "homepage": "https://github.com/sidwiskers/gramless#readme",
+  "files": [
+    "src",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
   "author": "sidwiskers",
   "license": "MIT"
 }

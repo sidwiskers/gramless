@@ -368,6 +368,21 @@ await ctx.call('newTelegramMethod2026', { chat_id: ctx.chatId, custom_param: tru
 
 ---
 
+## Benchmarks & Scale
+
+Gramless is engineered from first principles for sub-millisecond execution in isolated V8 environments:
+
+| Scenario | Complexity / Scale | Latency (µs / op) | Throughput (ops / sec) |
+| :--- | :--- | :--- | :--- |
+| **Exact Command Dispatch** | 1,000 registered routes | **2.44 µs** | **409,792** |
+| **Exact Action Dispatch** | 500 registered callback routes | **0.97 µs** | **1,031,676** |
+| **Middleware Pipeline** | 10 onion layers + route execution | **7.86 µs** | **127,232** |
+| **Schema Validation (`v`)** | Multi-field object + nested constraints | **0.46 µs** | **2,153,877** |
+
+For reproducible methodology and benchmark details, see [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
+
+---
+
 ## License
 
 MIT © [sidwiskers](https://github.com/sidwiskers)
