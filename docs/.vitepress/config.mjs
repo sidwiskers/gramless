@@ -5,6 +5,9 @@ export default defineConfig({
   description: 'Ultra-fast, zero-dependency, transactional Telegram Serverless framework',
   base: '/gramless/',
   cleanUrls: true,
+  sitemap: {
+    hostname: 'https://sidwiskers.github.io/gramless',
+  },
   themeConfig: {
     siteTitle: 'Gramless',
     nav: [
