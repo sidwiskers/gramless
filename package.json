@@ -4,8 +4,13 @@
   "description": "Ultra-fast, zero-dependency, transactional Telegram Serverless framework engineered for TGCloud",
   "type": "module",
   "main": "src/index.js",
+  "types": "./types/index.d.ts",
   "exports": {
-    ".": "./src/index.js",
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./filters": "./src/filters.js",
     "./testkit": "./src/testkit/index.js",
     "./session": "./src/session.js",
     "./fsm": "./src/fsm.js",

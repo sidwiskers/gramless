@@ -100,6 +100,9 @@ export class GramlessRouter {
     /** @type {Map<string, Array<Function>>} Event type routes ('message', 'photo', etc.) */
     this.eventRoutes = new Map();
 
+    /** @type {Array<{ filter: Function, handler: Function }>} Composable filter predicate routes */
+    this.predicateRoutes = [];
+
     /** @type {Array<GramlessRouter>} Child sub-routers / groups */
     this.subRouters = [];
 
@@ -177,19 +180,23 @@ export class GramlessRouter {
   }
 
   /**
-   * Matches by update event kind ('message', 'photo', 'document', 'callback_query', etc.).
-   * @param {string} event
+   * Matches by update event kind ('message', 'photo', etc.) or functional filter predicate.
+   * @param {string|Function} trigger
    * @param {...Function} handlers
    * @returns {this}
    */
-  on(event, ...handlers) {
+  on(trigger, ...handlers) {
     const pipeline = this._compileRoute(handlers);
-    let list = this.eventRoutes.get(event);
-    if (!list) {
-      list = [];
-      this.eventRoutes.set(event, list);
+    if (typeof trigger === 'function') {
+      this.predicateRoutes.push({ filter: trigger, handler: pipeline });
+    } else {
+      let list = this.eventRoutes.get(trigger);
+      if (!list) {
+        list = [];
+        this.eventRoutes.set(trigger, list);
+      }
+      list.push(pipeline);
     }
-    list.push(pipeline);
     return this;
   }
 
@@ -352,7 +359,16 @@ export class GramlessRouter {
       }
     }
 
-    // 4. Update Event Type matching ('message', 'photo', 'callback_query')
+    // 4. Composable Predicate Routes (Filter.all, etc.)
+    for (let i = 0; i < this.predicateRoutes.length; i++) {
+      const { filter, handler } = this.predicateRoutes[i];
+      if (await filter(ctx)) {
+        await handler(ctx);
+        return true;
+      }
+    }
+
+    // 5. Update Event Type matching ('message', 'photo', 'callback_query')
     const eventType = this._resolveEventType(ctx);
     if (eventType) {
       const handlers = this.eventRoutes.get(eventType);

@@ -1,16 +1,20 @@
 /**
- * Gramless Context Engine
+ * Gramless Context Engine (Comprehensive Bot API Surface)
  * 
- * Provides an ergonomic, allocation-minimized facade around incoming Telegram
- * updates, unwrapped payloads, and Bot API methods.
+ * Provides an allocation-minimized, ergonomic facade around incoming Telegram
+ * updates, unwrapped payloads, keyboard builders, and the complete Telegram Bot API.
  */
 
 import { ApiError } from './errors.js';
 
+// --- Keyboard & Reply Markup Builders ---
+
 /**
- * Normalizes keyboard options into standard Telegram ReplyMarkup format.
+ * Normalizes inline keyboard buttons into Telegram InlineKeyboardMarkup schema.
+ * Supports string shortcuts, { text, data }, { text, url }, { text, webApp }.
+ * 
  * @param {any} buttons
- * @returns {Record<string, unknown>|undefined}
+ * @returns {{ inline_keyboard: Array<Array<Record<string, any>>> } | undefined}
  */
 export function buildInlineKeyboard(buttons) {
   if (!buttons) return undefined;
@@ -24,8 +28,8 @@ export function buildInlineKeyboard(buttons) {
           return { text: btn, callback_data: btn };
         }
         const item = { text: btn.text };
-        if (btn.data) item.callback_data = btn.data;
-        else if (btn.callback_data) item.callback_data = btn.callback_data;
+        if (btn.data !== undefined) item.callback_data = String(btn.data);
+        else if (btn.callback_data !== undefined) item.callback_data = String(btn.callback_data);
         else if (btn.url) item.url = btn.url;
         else if (btn.webApp || btn.web_app) {
           const url = typeof (btn.webApp || btn.web_app) === 'string'
@@ -41,6 +45,100 @@ export function buildInlineKeyboard(buttons) {
     return { inline_keyboard };
   }
   return undefined;
+}
+
+/**
+ * Normalizes custom reply keyboard buttons into Telegram ReplyKeyboardMarkup schema.
+ * 
+ * @param {any} buttons
+ * @param {Object} [options={}]
+ * @param {boolean} [options.resize=true]
+ * @param {boolean} [options.oneTime=false]
+ * @param {boolean} [options.persistent=false]
+ * @param {string} [options.placeholder]
+ * @param {boolean} [options.selective=false]
+ * @returns {{ keyboard: Array<Array<Record<string, any>>>, resize_keyboard?: boolean, one_time_keyboard?: boolean, is_persistent?: boolean, input_field_placeholder?: string, selective?: boolean } | undefined}
+ */
+export function buildReplyKeyboard(buttons, options = {}) {
+  if (!buttons) return undefined;
+  if (buttons.keyboard) return buttons;
+
+  if (Array.isArray(buttons)) {
+    const keyboard = buttons.map(row => {
+      if (!Array.isArray(row)) row = [row];
+      return row.map(btn => {
+        if (typeof btn === 'string') {
+          return { text: btn };
+        }
+        const item = { text: btn.text };
+        if (btn.requestContact || btn.request_contact) item.request_contact = true;
+        if (btn.requestLocation || btn.request_location) item.request_location = true;
+        if (btn.requestUsers || btn.request_users) item.request_users = btn.requestUsers || btn.request_users;
+        if (btn.requestChat || btn.request_chat) item.request_chat = btn.requestChat || btn.request_chat;
+        return item;
+      });
+    });
+
+    const markup = { keyboard };
+    if (options.resize !== false) markup.resize_keyboard = true;
+    if (options.oneTime) markup.one_time_keyboard = true;
+    if (options.persistent) markup.is_persistent = true;
+    if (options.placeholder) markup.input_field_placeholder = options.placeholder;
+    if (options.selective) markup.selective = true;
+    return markup;
+  }
+  return undefined;
+}
+
+/**
+ * Returns a Telegram ReplyKeyboardRemove markup object.
+ * @param {Object} [options={}]
+ * @param {boolean} [options.selective=false]
+ * @returns {{ remove_keyboard: true, selective?: boolean }}
+ */
+export function removeKeyboard(options = {}) {
+  const markup = { remove_keyboard: true };
+  if (options.selective) markup.selective = true;
+  return markup;
+}
+
+/**
+ * Returns a Telegram ForceReply markup object.
+ * @param {Object} [options={}]
+ * @param {string} [options.placeholder]
+ * @param {boolean} [options.selective=false]
+ * @returns {{ force_reply: true, input_field_placeholder?: string, selective?: boolean }}
+ */
+export function forceReply(options = {}) {
+  const markup = { force_reply: true };
+  if (options.placeholder) markup.input_field_placeholder = options.placeholder;
+  if (options.selective) markup.selective = true;
+  return markup;
+}
+
+/**
+ * Automatically resolves and normalizes any keyboard or reply markup option.
+ * @param {Object} options
+ * @returns {Record<string, any>}
+ */
+function normalizeMarkupOptions(options = {}) {
+  const payload = { ...options };
+
+  if (payload.buttons) {
+    payload.reply_markup = buildInlineKeyboard(payload.buttons);
+    delete payload.buttons;
+  } else if (payload.keyboard) {
+    payload.reply_markup = buildReplyKeyboard(payload.keyboard, options);
+    delete payload.keyboard;
+  } else if (payload.removeKeyboard) {
+    payload.reply_markup = removeKeyboard(options);
+    delete payload.removeKeyboard;
+  } else if (payload.forceReply) {
+    payload.reply_markup = forceReply(options);
+    delete payload.forceReply;
+  }
+
+  return payload;
 }
 
 export class GramlessContext {
@@ -64,89 +162,53 @@ export class GramlessContext {
 
   // --- Identifiers & Extraction ---
 
-  /**
-   * The primary message associated with this update.
-   * @returns {Record<string, any>|null}
-   */
   get message() {
-    if (this.raw.chat && (this.raw.text !== undefined || this.raw.caption !== undefined || this.raw.photo)) {
+    if (this.raw.chat && !this.raw.new_chat_member) {
       return this.raw;
     }
     if (this.raw.message) return this.raw.message;
     return this.update.message || this.update.edited_message || this.update.channel_post || null;
   }
 
-  /**
-   * The chat ID of the current interaction.
-   * @returns {number|string|null}
-   */
   get chatId() {
     return this.message?.chat?.id || this.raw.from?.id || null;
   }
 
-  /**
-   * The message ID if available.
-   * @returns {number|null}
-   */
   get messageId() {
     return this.message?.message_id || null;
   }
 
-  /**
-   * The user who triggered the interaction.
-   * @returns {Record<string, any>|null}
-   */
   get from() {
     return this.raw.from || this.message?.from || null;
   }
 
-  /**
-   * The sender's user ID.
-   * @returns {number|null}
-   */
   get userId() {
     return this.from?.id || null;
   }
 
-  /**
-   * Text of the message or caption.
-   * @returns {string}
-   */
   get text() {
     return this.raw.text || this.raw.caption || this.message?.text || this.message?.caption || '';
   }
 
-  /**
-   * Callback data string if this is a callback_query update.
-   * @returns {string|null}
-   */
   get data() {
     return this.raw.data ?? null;
   }
 
-  /**
-   * Whether the chat is a private 1-on-1 dialogue.
-   * @returns {boolean}
-   */
   get isPrivate() {
     return this.message?.chat?.type === 'private';
   }
 
-  /**
-   * Whether the chat is a group or supergroup.
-   * @returns {boolean}
-   */
   get isGroup() {
     const type = this.message?.chat?.type;
     return type === 'group' || type === 'supergroup';
   }
 
-  // --- Outbound Actions & Facades ---
+  get isChannel() {
+    return this.message?.chat?.type === 'channel';
+  }
 
-  /**
-   * Ensures the API client is present or throws a clear error.
-   * @private
-   */
+  // --- API Validation & Escape Hatch ---
+
   _requireApi() {
     if (!this.api) {
       throw new ApiError('unknown', 'API client proxy is not configured on Context', 500);
@@ -155,7 +217,7 @@ export class GramlessContext {
   }
 
   /**
-   * Day-zero raw escape hatch: Call any Telegram Bot API method directly.
+   * Day-zero raw escape hatch: Call any current or future Telegram Bot API method directly.
    * @param {string} method
    * @param {Record<string, any>} [params={}]
    * @returns {Promise<any>}
@@ -171,92 +233,148 @@ export class GramlessContext {
     throw new ApiError(method, `Method ${method} is not available on API client`, 404);
   }
 
-  /**
-   * Sends a text message to the current chat.
-   * @param {string} text
-   * @param {Record<string, any>} [options={}]
-   */
+  // --- Sending Messages & Media ---
+
   async reply(text, options = {}) {
     const chatId = options.chat_id || this.chatId;
     if (!chatId) throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
-
-    const payload = {
-      chat_id: chatId,
-      text,
-      ...options,
-    };
-
-    if (options.buttons) {
-      payload.reply_markup = buildInlineKeyboard(options.buttons);
-      delete payload.buttons;
-    }
-
+    const payload = normalizeMarkupOptions({ chat_id: chatId, text, ...options });
     return this.call('sendMessage', payload);
   }
 
-  /**
-   * Sends an HTML-formatted message.
-   * @param {string} html
-   * @param {Record<string, any>} [options={}]
-   */
   async replyWithHtml(html, options = {}) {
     return this.reply(html, { parse_mode: 'HTML', ...options });
   }
 
-  /**
-   * Sends a MarkdownV2-formatted message.
-   * @param {string} markdown
-   * @param {Record<string, any>} [options={}]
-   */
   async replyWithMarkdown(markdown, options = {}) {
     return this.reply(markdown, { parse_mode: 'MarkdownV2', ...options });
   }
 
-  /**
-   * Sends a photo to the current chat.
-   * @param {string|any} photo
-   * @param {Record<string, any>} [options={}]
-   */
   async sendPhoto(photo, options = {}) {
     const chatId = options.chat_id || this.chatId;
-    const payload = { chat_id: chatId, photo, ...options };
-    if (options.buttons) {
-      payload.reply_markup = buildInlineKeyboard(options.buttons);
-      delete payload.buttons;
-    }
+    const payload = normalizeMarkupOptions({ chat_id: chatId, photo, ...options });
     return this.call('sendPhoto', payload);
   }
 
-  /**
-   * Sends a document / file.
-   * @param {string|any} document
-   * @param {Record<string, any>} [options={}]
-   */
   async sendDocument(document, options = {}) {
     const chatId = options.chat_id || this.chatId;
-    const payload = { chat_id: chatId, document, ...options };
-    if (options.buttons) {
-      payload.reply_markup = buildInlineKeyboard(options.buttons);
-      delete payload.buttons;
-    }
+    const payload = normalizeMarkupOptions({ chat_id: chatId, document, ...options });
     return this.call('sendDocument', payload);
   }
 
-  /**
-   * Sends a chat action (typing, upload_photo, etc.)
-   * @param {string} [action='typing']
-   */
+  async sendVideo(video, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, video, ...options });
+    return this.call('sendVideo', payload);
+  }
+
+  async sendAnimation(animation, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, animation, ...options });
+    return this.call('sendAnimation', payload);
+  }
+
+  async sendAudio(audio, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, audio, ...options });
+    return this.call('sendAudio', payload);
+  }
+
+  async sendVoice(voice, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, voice, ...options });
+    return this.call('sendVoice', payload);
+  }
+
+  async sendVideoNote(videoNote, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, video_note: videoNote, ...options });
+    return this.call('sendVideoNote', payload);
+  }
+
+  async sendMediaGroup(media, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('sendMediaGroup', { chat_id: chatId, media, ...options });
+  }
+
+  async sendSticker(sticker, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, sticker, ...options });
+    return this.call('sendSticker', payload);
+  }
+
+  async sendLocation(latitude, longitude, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, latitude, longitude, ...options });
+    return this.call('sendLocation', payload);
+  }
+
+  async sendVenue(latitude, longitude, title, address, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, latitude, longitude, title, address, ...options });
+    return this.call('sendVenue', payload);
+  }
+
+  async sendContact(phoneNumber, firstName, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      phone_number: phoneNumber,
+      first_name: firstName,
+      ...options,
+    });
+    return this.call('sendContact', payload);
+  }
+
+  // --- Interactive & Engagement Methods ---
+
+  async sendPoll(question, pollOptions, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const formattedOptions = pollOptions.map(opt => typeof opt === 'string' ? { text: opt } : opt);
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      question,
+      options: formattedOptions,
+      ...options,
+    });
+    return this.call('sendPoll', payload);
+  }
+
+  async stopPoll(messageId = null, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const msgId = messageId || options.message_id || this.messageId;
+    return this.call('stopPoll', { chat_id: chatId, message_id: msgId, ...options });
+  }
+
+  async sendDice(emoji = '🎲', options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({ chat_id: chatId, emoji, ...options });
+    return this.call('sendDice', payload);
+  }
+
+  async react(emoji, isBig = false) {
+    const chatId = this.chatId;
+    const messageId = this.messageId;
+    if (!chatId || !messageId) return null;
+    const reaction = typeof emoji === 'string'
+      ? [{ type: 'emoji', emoji }]
+      : (Array.isArray(emoji) ? emoji : [emoji]);
+    return this.call('setMessageReaction', {
+      chat_id: chatId,
+      message_id: messageId,
+      reaction,
+      is_big: isBig,
+    });
+  }
+
   async chatAction(action = 'typing') {
     const chatId = this.chatId;
     if (!chatId) return null;
     return this.call('sendChatAction', { chat_id: chatId, action });
   }
 
-  /**
-   * Edits the current message's text (useful in callback query handlers).
-   * @param {string} text
-   * @param {Record<string, any>} [options={}]
-   */
+  // --- Message Management & Editing ---
+
   async edit(text, options = {}) {
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
@@ -265,25 +383,39 @@ export class GramlessContext {
       throw new ApiError('editMessageText', 'Missing chat_id or message_id for edit', 400);
     }
 
-    const payload = {
+    const payload = normalizeMarkupOptions({
       chat_id: chatId,
       message_id: messageId,
       text,
       ...options,
-    };
-
-    if (options.buttons) {
-      payload.reply_markup = buildInlineKeyboard(options.buttons);
-      delete payload.buttons;
-    }
-
+    });
     return this.call('editMessageText', payload);
   }
 
-  /**
-   * Edits only the inline keyboard markup of the current message.
-   * @param {any} buttons
-   */
+  async editCaption(caption, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const messageId = options.message_id || this.messageId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      message_id: messageId,
+      caption,
+      ...options,
+    });
+    return this.call('editMessageCaption', payload);
+  }
+
+  async editMedia(media, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const messageId = options.message_id || this.messageId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      message_id: messageId,
+      media,
+      ...options,
+    });
+    return this.call('editMessageMedia', payload);
+  }
+
   async editKeyboard(buttons) {
     const chatId = this.chatId;
     const messageId = this.messageId;
@@ -294,23 +426,65 @@ export class GramlessContext {
     });
   }
 
-  /**
-   * Deletes the current message.
-   */
-  async delete() {
+  async delete(messageId = null) {
     const chatId = this.chatId;
-    const messageId = this.messageId;
-    if (!chatId || !messageId) {
+    const msgId = messageId || this.messageId;
+    if (!chatId || !msgId) {
       throw new ApiError('deleteMessage', 'Cannot delete message without chat_id and message_id', 400);
     }
-    return this.call('deleteMessage', { chat_id: chatId, message_id: messageId });
+    return this.call('deleteMessage', { chat_id: chatId, message_id: msgId });
   }
 
-  /**
-   * Answers a callback query (acknowledges button press and dismisses loading spinner).
-   * @param {string} [text='']
-   * @param {Record<string, any>} [options={}]
-   */
+  async deleteMessages(messageIds = []) {
+    const chatId = this.chatId;
+    if (!chatId) throw new ApiError('deleteMessages', 'Missing chat_id', 400);
+    return this.call('deleteMessages', { chat_id: chatId, message_ids: messageIds });
+  }
+
+  async forward(toChatId, options = {}) {
+    const fromChatId = this.chatId;
+    const messageId = this.messageId;
+    if (!fromChatId || !messageId) throw new ApiError('forwardMessage', 'Missing source message context', 400);
+    return this.call('forwardMessage', {
+      chat_id: toChatId,
+      from_chat_id: fromChatId,
+      message_id: messageId,
+      ...options,
+    });
+  }
+
+  async copy(toChatId, options = {}) {
+    const fromChatId = this.chatId;
+    const messageId = this.messageId;
+    if (!fromChatId || !messageId) throw new ApiError('copyMessage', 'Missing source message context', 400);
+    const payload = normalizeMarkupOptions({
+      chat_id: toChatId,
+      from_chat_id: fromChatId,
+      message_id: messageId,
+      ...options,
+    });
+    return this.call('copyMessage', payload);
+  }
+
+  async pin(options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const messageId = options.message_id || this.messageId;
+    return this.call('pinChatMessage', { chat_id: chatId, message_id: messageId, ...options });
+  }
+
+  async unpin(messageId = null, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const msgId = messageId || options.message_id || this.messageId;
+    return this.call('unpinChatMessage', { chat_id: chatId, message_id: msgId, ...options });
+  }
+
+  async unpinAll(options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('unpinAllChatMessages', { chat_id: chatId, ...options });
+  }
+
+  // --- Callback Query Responses ---
+
   async answer(text = '', options = {}) {
     const queryId = this.raw.id;
     if (!queryId) return null;
@@ -321,25 +495,76 @@ export class GramlessContext {
     });
   }
 
-  /**
-   * Shows a popup modal alert in response to a callback query.
-   * @param {string} text
-   */
   async alert(text) {
     return this.answer(text, { show_alert: true });
   }
 
-  /**
-   * Sends an ephemeral message (only visible to target recipient or privately delivered).
-   * @param {string} text
-   * @param {Record<string, any>} [options={}]
-   */
   async ephemeral(text, options = {}) {
-    // If callback query from group, we answer with an alert by default
-    // or send private message to user directly if chatId differs from userId
     if (this.raw.id && !options.sendPrivateMessage) {
       return this.alert(text);
     }
     return this.reply(text, { chat_id: this.userId, ...options });
+  }
+
+  // --- Chat Administration & Moderation ---
+
+  async banSender(revokeMessages = true) {
+    const chatId = this.chatId;
+    const senderId = this.userId;
+    if (!chatId || !senderId) throw new ApiError('banChatMember', 'Cannot ban without chat and sender', 400);
+    return this.banMember(senderId, { revoke_messages: revokeMessages });
+  }
+
+  async banMember(userId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('banChatMember', { chat_id: chatId, user_id: userId, ...options });
+  }
+
+  async unbanMember(userId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('unbanChatMember', { chat_id: chatId, user_id: userId, ...options });
+  }
+
+  async restrictMember(userId, permissions = {}, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('restrictChatMember', {
+      chat_id: chatId,
+      user_id: userId,
+      permissions,
+      ...options,
+    });
+  }
+
+  async promoteMember(userId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('promoteChatMember', { chat_id: chatId, user_id: userId, ...options });
+  }
+
+  async setChatTitle(title) {
+    const chatId = this.chatId;
+    return this.call('setChatTitle', { chat_id: chatId, title });
+  }
+
+  async setChatDescription(description) {
+    const chatId = this.chatId;
+    return this.call('setChatDescription', { chat_id: chatId, description });
+  }
+
+  async createInviteLink(options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('createChatInviteLink', { chat_id: chatId, ...options });
+  }
+
+  async exportInviteLink() {
+    const chatId = this.chatId;
+    return this.call('exportChatInviteLink', { chat_id: chatId });
+  }
+
+  async setMyCommands(commands, options = {}) {
+    return this.call('setMyCommands', { commands, ...options });
+  }
+
+  async getMyCommands(options = {}) {
+    return this.call('getMyCommands', options);
   }
 }

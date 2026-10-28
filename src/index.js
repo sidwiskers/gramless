@@ -8,7 +8,14 @@
 import { GramlessRouter } from './router.js';
 
 export { GramlessRouter } from './router.js';
-export { GramlessContext, buildInlineKeyboard } from './context.js';
+export {
+  GramlessContext,
+  buildInlineKeyboard,
+  buildReplyKeyboard,
+  removeKeyboard,
+  forceReply,
+} from './context.js';
+export { Filter } from './filters.js';
 export {
   GramlessError,
   ApiError,

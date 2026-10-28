@@ -11,6 +11,17 @@ export class MockBotApi {
     /** @type {Map<string, any>} Canned method returns */
     this.responses = new Map();
     this.nextMessageId = 1000;
+
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        if (prop in target || typeof prop === 'symbol') {
+          return Reflect.get(target, prop, receiver);
+        }
+        return async (params = {}) => {
+          return target.call(prop, params);
+        };
+      },
+    });
   }
 
   /**
