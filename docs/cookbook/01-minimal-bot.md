@@ -1,4 +1,4 @@
-# Recipe 01: The Zero-Coldstart Bot
+# Recipe 01: Minimal Bot
 
 A minimal, production-ready bot demonstrating the recommended TGCloud directory architecture and single-line handler exports with **Gramless**.
 
@@ -42,21 +42,21 @@ export const bot = createBot();
 bot.command('start', async (ctx) => {
   await ctx.chatAction('typing');
 
-  await ctx.reply(`👋 Welcome <b>${ctx.from?.first_name || 'User'}</b>!`, {
+  await ctx.reply(`Welcome <b>${ctx.from?.first_name || 'User'}</b>!`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'Ping Isolate 🏓', data: 'action:ping' }],
-      [{ text: 'Official Documentation 📚', url: 'https://github.com/sidwiskers/gramless' }],
+      [{ text: 'Ping isolate', data: 'action:ping' }],
+      [{ text: 'Official documentation', url: 'https://github.com/sidwiskers/gramless' }],
     ],
   });
 });
 
 bot.action('action:ping', async (ctx) => {
-  await ctx.answer({ text: 'Pong received!' });
-  await ctx.edit(`🏓 <b>Pong!</b>\n\nButton callback executed at <code>${new Date().toISOString()}</code>`, {
+  await ctx.answer({ text: 'Pong received' });
+  await ctx.edit(`<b>Pong</b>\n\nButton callback executed at <code>${new Date().toISOString()}</code>`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'Refresh 🔄', data: 'action:ping' }],
+      [{ text: 'Refresh', data: 'action:ping' }],
     ],
   });
 });

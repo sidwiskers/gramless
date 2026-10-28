@@ -8,11 +8,11 @@
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
 [![Cookbook](https://img.shields.io/badge/cookbook-8%20recipes-purple.svg)](https://github.com/sidwiskers/gramless-cookbook)
 
-**Gramless** is an ultra-fast, zero-dependency, transactional Telegram framework engineered from first principles for **Telegram Serverless (TGCloud)** and isolated V8 runtimes.
+**Gramless** is a zero-dependency Telegram framework built for **Telegram Serverless (TGCloud)** and isolated V8 runtimes.
 
-Built with zero-allocation systems discipline, Gramless replaces raw isolate `if/else` boilerplate with constant-time routing, transactional SQLite state with automatic rollback, composable filters, full Bot API method coverage, type-safe Mini App RPC endpoints, and hermetic offline testing via **Gramless Lab**.
+It provides route dispatch, transactional SQLite sessions with automatic rollback, composable filters, Bot API helpers, Mini App RPC endpoints, and offline testing via **Gramless Lab**.
 
-> 📚 **Production Recipes:** Explore the [**Gramless Cookbook**](https://github.com/sidwiskers/gramless-cookbook) for complete projects covering SQLite CRUD, FSM wizards, Mini App RPC, Telegram Stars, and offline testing.
+> **Production Recipes:** Explore the [**Gramless Cookbook**](https://github.com/sidwiskers/gramless-cookbook) for complete projects covering SQLite CRUD, FSM wizards, Mini App RPC, Telegram Stars, and offline testing.
 
 ```javascript
 import { createBot, Filter } from 'gramless';
@@ -20,24 +20,23 @@ import { createBot, Filter } from 'gramless';
 export const bot = createBot();
 
 bot.command('start', async (ctx) => {
-  await ctx.reply(`👋 Welcome <b>${ctx.from.first_name}</b>!`, {
+  await ctx.reply(`Welcome <b>${ctx.from.first_name}</b>!`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'Open App 🚀', webApp: 'https://app.tgcloud.ai/' }],
-      [{ text: 'Settings ⚙️', data: 'settings:view' }],
+      [{ text: 'Open App', webApp: 'https://app.tgcloud.ai/' }],
+      [{ text: 'Settings', data: 'settings:view' }],
     ],
   });
 });
 
 // Composable filter matching
 bot.on(Filter.all(Filter.group, Filter.hasPhoto), async (ctx) => {
-  await ctx.react('🔥');
-  await ctx.reply('Nice photo!');
+  await ctx.reply('Photo received.');
 });
 
 bot.action('settings:view', async (ctx) => {
   await ctx.answer();
-  await ctx.edit('⚙️ <b>Settings Menu</b>\nSelect your preferences below:', {
+  await ctx.edit('<b>Settings Menu</b>\nSelect your preferences below:', {
     parse_mode: 'HTML',
   });
 });
@@ -135,7 +134,6 @@ await ctx.sendPoll('Favorite language?', ['JavaScript', 'Go', 'Rust'], { is_anon
 await ctx.sendDice('🎯');
 
 // Message Reactions & Typing Action
-await ctx.react('🔥');
 await ctx.chatAction('typing');
 ```
 
@@ -184,8 +182,8 @@ await ctx.reply('Menu:', {
 // 2. Custom Reply Keyboards
 await ctx.reply('Share your info:', {
   keyboard: [
-    [{ text: 'Share Contact 📱', requestContact: true }],
-    [{ text: 'Share Location 📍', requestLocation: true }],
+    [{ text: 'Share Contact', requestContact: true }],
+    [{ text: 'Share Location', requestLocation: true }],
   ],
   resize: true,
   oneTime: true,
@@ -220,7 +218,7 @@ bot.on(adminCommand, async (ctx) => {
 
 // Match groups with audio or voice notes
 bot.on(Filter.all(Filter.group, Filter.any(Filter.hasAudio, Filter.hasVoice)), async (ctx) => {
-  await ctx.react('🎧');
+  await ctx.reply('Audio received.');
 });
 ```
 

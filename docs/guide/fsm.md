@@ -37,7 +37,7 @@ wizard.step(
   // Validation guard: Rejects invalid emails and retains user on current step
   async (ctx) => {
     if (!ctx.text || !ctx.text.includes('@')) {
-      await ctx.reply('⚠️ Invalid email address. Please try again:');
+      await ctx.reply('Invalid email address. Please try again:');
       return false;
     }
     return true;

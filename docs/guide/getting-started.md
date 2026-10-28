@@ -52,17 +52,17 @@ export const bot = createBot();
 bot.command('start', async (ctx) => {
   await ctx.chatAction('typing');
 
-  await ctx.reply(`👋 Welcome <b>${ctx.from?.first_name || 'User'}</b>!`, {
+  await ctx.reply(`Welcome <b>${ctx.from?.first_name || 'User'}</b>!`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'Ping Isolate 🏓', data: 'action:ping' }],
+      [{ text: 'Ping isolate', data: 'action:ping' }],
     ],
   });
 });
 
 bot.action('action:ping', async (ctx) => {
-  await ctx.answer({ text: 'Pong received!' });
-  await ctx.edit('🏓 <b>Pong!</b> Isolate responsive.', {
+  await ctx.answer({ text: 'Pong received' });
+  await ctx.edit('<b>Pong</b>. Isolate responsive.', {
     parse_mode: 'HTML',
   });
 });

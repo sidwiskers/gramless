@@ -79,7 +79,7 @@ bot.on('successful_payment', async (ctx) => {
     telegramPaymentChargeId: payment.telegram_payment_charge_id,
   }).run();
 
-  await ctx.reply(`🎉 Payment confirmed! Your VIP pass is activated.`);
+  await ctx.reply(`Payment confirmed. VIP pass is activated.`);
 });
 ```
 

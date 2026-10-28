@@ -14,7 +14,7 @@ Building Mini Apps on standard hosting (Node/Express/Next.js) requires:
 ### The Gramless & TGCloud Solution
 - **Zero-Config Hosting:** By setting `"static": "public"` in `tgcloud.jsonc`, your HTML/CSS/JS frontend is served directly from Telegram's global CDN with automatic SSL and zero server maintenance.
 - **Built-in Cryptographic Identity:** TGCloud's runtime verifies caller credentials before passing execution to your isolate. `createEndpoint({ requireAuth: true })` automatically extracts the verified user and attaches it to `ctx.user`.
-- **Zero-Dependency Schema Validation:** Gramless includes `v` (`v.string()`, `v.number()`, `v.boolean()`, `v.object()`), validating incoming payloads in sub-microseconds without a single external package.
+- **Built-in Schema Validation:** Gramless includes `v` (`v.string()`, `v.number()`, `v.boolean()`, `v.object()`) for validating incoming payloads without external dependencies.
 
 ---
 

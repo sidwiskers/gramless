@@ -47,18 +47,18 @@ bot.use(session());
 const wizard = createFSM({
   cancelCommand: '/cancel',
   onCancel: async (ctx) => {
-    await ctx.reply('🚫 Wizard cancelled.');
+    await ctx.reply('Wizard cancelled.');
   },
 });
 
 // Step 1: Input text with string length guard
 wizard.step('ask_name', async (ctx) => {
   ctx.fsm.data.name = ctx.text.trim();
-  await ctx.reply(`Hello ${ctx.fsm.data.name}! What is your age?`);
+  await ctx.reply(`Hello ${ctx.fsm.data.name}. What is your age?`);
   ctx.fsm.goto('ask_age');
 }, async (ctx) => {
   if (!ctx.text || ctx.text.trim().length < 2) {
-    await ctx.reply('⚠️ Please provide a valid name (at least 2 characters):');
+    await ctx.reply('Please provide a valid name (at least 2 characters):');
     return false; // Rejects update, keeps user on 'ask_name'
   }
   return true;

@@ -7,7 +7,7 @@ import { TgCloudSessionStore } from 'gramless/session';
 export const bot = createBot({
   onError: async (err, ctx) => {
     console.error('Unhandled bot error:', err);
-    await ctx.reply('⚠️ An unexpected error occurred. Please try again later.');
+    await ctx.reply('An unexpected error occurred. Please try again later.');
   },
 });
 
@@ -42,11 +42,11 @@ noteWizard.step('await_content', async (ctx) => {
 
   ctx.fsm.complete();
 
-  await ctx.reply(`✅ Note "<b>${title}</b>" saved!`, {
+  await ctx.reply(`Note "<b>${title}</b>" saved.`, {
     parse_mode: 'HTML',
     buttons: [
       [{ text: 'View All Notes', data: 'list_notes' }],
-      [{ text: 'Open Mini App 📋', webApp: 'https://app8844354067.tgcloud.ai/' }],
+      [{ text: 'Open Mini App', webApp: 'https://app8844354067.tgcloud.ai/' }],
     ],
   });
 });
@@ -55,12 +55,12 @@ bot.use(noteWizard.middleware());
 
 // 3. Command Handlers
 bot.command('start', async (ctx) => {
-  await ctx.reply(`👋 Welcome <b>${ctx.from.first_name}</b> to <b>Gramless</b>!`, {
+  await ctx.reply(`Welcome <b>${ctx.from.first_name}</b> to <b>Gramless</b>.`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'New Note ✍️', data: 'create_note' }],
-      [{ text: 'My Notes 📋', data: 'list_notes' }],
-      [{ text: 'Launch Mini App 🚀', webApp: 'https://app8844354067.tgcloud.ai/' }],
+      [{ text: 'New Note', data: 'create_note' }],
+      [{ text: 'My Notes', data: 'list_notes' }],
+      [{ text: 'Launch Mini App', webApp: 'https://app8844354067.tgcloud.ai/' }],
     ],
   });
 });
@@ -82,7 +82,7 @@ bot.action('list_notes', async (ctx) => {
   const notes = ctx.session.notes || [];
 
   if (notes.length === 0) {
-    await ctx.reply('You have no saved notes yet. Use /newnote to create one!');
+    await ctx.reply('You have no saved notes yet. Use /newnote to create one.');
     return;
   }
 
@@ -90,5 +90,5 @@ bot.action('list_notes', async (ctx) => {
     .map((n, i) => `${i + 1}. <b>${n.title}</b>\n${n.content}`)
     .join('\n\n');
 
-  await ctx.reply(`📋 <b>Your Notes:</b>\n\n${listText}`, { parse_mode: 'HTML' });
+  await ctx.reply(`<b>Your Notes:</b>\n\n${listText}`, { parse_mode: 'HTML' });
 });

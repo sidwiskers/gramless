@@ -41,18 +41,18 @@ import { createBot, Filter } from 'gramless';
 export const bot = createBot();
 
 bot.command('start', async (ctx) => {
-  await ctx.reply(`👋 Welcome <b>${ctx.from.first_name}</b>!`, {
+  await ctx.reply(`Welcome <b>${ctx.from.first_name}</b>!`, {
     parse_mode: 'HTML',
     buttons: [
-      [{ text: 'Open App 🚀', webApp: 'https://app.tgcloud.ai/' }],
-      [{ text: 'Settings ⚙️', data: 'settings:view' }],
+      [{ text: 'Open App', webApp: 'https://app.tgcloud.ai/' }],
+      [{ text: 'Settings', data: 'settings:view' }],
     ],
   });
 });
 
 bot.action('settings:view', async (ctx) => {
   await ctx.answer();
-  await ctx.edit('⚙️ <b>Settings Menu</b>\nSelect your preferences below:', {
+  await ctx.edit('<b>Settings Menu</b>\nSelect your preferences below:', {
     parse_mode: 'HTML',
   });
 });

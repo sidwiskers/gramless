@@ -11,8 +11,8 @@
 await ctx.reply('Hello!', {
   parse_mode: 'HTML',
   buttons: [
-    [{ text: 'Visit Website 🌐', url: 'https://tgcloud.ai' }],
-    [{ text: 'Action ⚡', data: 'action:do' }],
+    [{ text: 'Visit Website', url: 'https://tgcloud.ai' }],
+    [{ text: 'Action', data: 'action:do' }],
   ],
 });
 
@@ -42,7 +42,6 @@ await ctx.sendDocument(fileId);
 await ctx.sendAnimation(gifId);
 
 // Engagement
-await ctx.react('🔥');
 await ctx.chatAction('typing');
 await ctx.sendPoll('Poll Question', ['Option A', 'Option B']);
 await ctx.sendDice('🎯');

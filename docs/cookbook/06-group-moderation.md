@@ -1,6 +1,6 @@
-# Recipe 06: High-Volume Group & Channel Administration
+# Recipe 06: Group and Channel Moderation
 
-This recipe demonstrates automated community defense, anti-spam link filtering, and administrator moderation tools using **Gramless Composable Filters** (`Filter`).
+This recipe demonstrates anti-spam link filtering and administrator moderation tools using **Gramless Composable Filters** (`Filter`).
 
 ---
 
@@ -11,7 +11,7 @@ In group chats, your bot receives hundreds of updates per minute.
 - Without declarative filters, moderation logic ends up deeply nested inside `if (msg.chat.type === 'group' || msg.chat.type === 'supergroup')` blocks.
 
 ### The Gramless Solution
-- **Zero-Allocation Composable Filters:** Gramless provides functional filter combinators (`Filter.all`, `Filter.any`, `Filter.not`) that short-circuit immediately if early conditions fail.
+- **Composable Filters:** Gramless provides functional filter combinators (`Filter.all`, `Filter.any`, `Filter.not`) that short-circuit immediately if early conditions fail.
 - **Dedicated Bot API Wrappers:** Context exposes direct moderation wrappers (`ctx.banSender(true)`, `ctx.restrictMember()`, `ctx.delete()`, `ctx.unbanMember()`) that automatically infer the current `chat_id` and `message_id`.
 
 ---
@@ -65,11 +65,11 @@ bot.on(Filter.all(Filter.group, hasSpamLink), async (ctx) => {
 ```javascript
 bot.command('ban', async (ctx) => {
   const target = ctx.message?.reply_to_message?.from;
-  if (!target) return ctx.reply('⚠️ Reply to the message of the user to ban.');
+  if (!target) return ctx.reply('Reply to the message of the user to ban.');
 
   // Bans the user and revokes all their past messages from the chat
   await ctx.banMember(target.id, { revoke_messages: true });
-  await ctx.reply(`🔨 Banned ${target.first_name}.`);
+  await ctx.reply(`Banned ${target.first_name}.`);
 });
 ```
 

@@ -130,12 +130,12 @@ bot.filter((ctx) => ctx.chat?.type === 'group', async (ctx) => { ... });
 
 #### In Gramless:
 ```javascript
-// New: High-performance functional combinators
+// New: Functional filter combinators
 import { Filter } from 'gramless';
 
-// Matches photos inside groups with zero array allocations:
+// Matches photos inside groups:
 bot.on(Filter.all(Filter.group, Filter.hasPhoto), async (ctx) => {
-  await ctx.react('🔥');
+  await ctx.reply('Photo received.');
 });
 ```
 
