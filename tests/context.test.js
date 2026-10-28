@@ -127,3 +127,64 @@ test('Errors: token sanitization in error messages', () => {
   const err = new ApiError('sendMessage', `Token leaked: ${secretToken}`);
   assert.ok(!err.message.includes('123456:ABC'));
 });
+
+test('Bot API 10.3: buildInlineKeyboard preserves disabled and custom button attributes', () => {
+  const buttons = [
+    [{ text: 'Disabled Action', data: 'act:dis', disabled: true }],
+    [{ text: 'Copy Code', copy_text: { text: 'API_KEY_123' } }],
+  ];
+
+  const markup = buildInlineKeyboard(buttons);
+
+  assert.deepEqual(markup, {
+    inline_keyboard: [
+      [{ text: 'Disabled Action', callback_data: 'act:dis', disabled: true }],
+      [{ text: 'Copy Code', copy_text: { text: 'API_KEY_123' } }],
+    ],
+  });
+});
+
+test('Bot API 10.3: rich messages and ephemeral message context methods', async () => {
+  const calls = [];
+  const mockApi = {
+    async sendRichMessage(params) {
+      calls.push({ method: 'sendRichMessage', params });
+      return { message_id: 201, ...params };
+    },
+    async editEphemeralMessageText(params) {
+      calls.push({ method: 'editEphemeralMessageText', params });
+      return true;
+    },
+    async deleteEphemeralMessage(params) {
+      calls.push({ method: 'deleteEphemeralMessage', params });
+      return true;
+    },
+  };
+
+  const raw = {
+    message_id: 10,
+    chat: { id: 888 },
+    from: { id: 777 },
+  };
+
+  const ctx = new GramlessContext(raw, {}, mockApi);
+
+  // 1. sendRichMessage
+  await ctx.sendRichMessage({ blocks: [{ type: 'paragraph', text: 'Rich greeting' }] });
+  assert.equal(calls[0].method, 'sendRichMessage');
+  assert.equal(calls[0].params.chat_id, 888);
+  assert.deepEqual(calls[0].params.rich_message, { blocks: [{ type: 'paragraph', text: 'Rich greeting' }] });
+
+  // 2. editEphemeralMessageText
+  await ctx.editEphemeralMessageText('Updated ephemeral text');
+  assert.equal(calls[1].method, 'editEphemeralMessageText');
+  assert.equal(calls[1].params.chat_id, 888);
+  assert.equal(calls[1].params.text, 'Updated ephemeral text');
+
+  // 3. deleteEphemeralMessage
+  await ctx.deleteEphemeralMessage(999);
+  assert.equal(calls[2].method, 'deleteEphemeralMessage');
+  assert.equal(calls[2].params.chat_id, 888);
+  assert.equal(calls[2].params.ephemeral_message_id, 999);
+});
+

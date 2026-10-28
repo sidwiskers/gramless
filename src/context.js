@@ -27,17 +27,22 @@ export function buildInlineKeyboard(buttons) {
         if (typeof btn === 'string') {
           return { text: btn, callback_data: btn };
         }
-        const item = { text: btn.text };
-        if (btn.data !== undefined) item.callback_data = String(btn.data);
-        else if (btn.callback_data !== undefined) item.callback_data = String(btn.callback_data);
-        else if (btn.url) item.url = btn.url;
-        else if (btn.webApp || btn.web_app) {
+        const item = { ...btn };
+        if (btn.data !== undefined) {
+          item.callback_data = String(btn.data);
+          delete item.data;
+        } else if (btn.callback_data !== undefined) {
+          item.callback_data = String(btn.callback_data);
+        }
+        if (btn.webApp || btn.web_app) {
           const url = typeof (btn.webApp || btn.web_app) === 'string'
             ? (btn.webApp || btn.web_app)
             : (btn.webApp || btn.web_app).url;
           item.web_app = { url };
-        } else {
-          item.callback_data = btn.text;
+          delete item.webApp;
+        }
+        if (!item.callback_data && !item.url && !item.web_app && !item.switch_inline_query && !item.switch_inline_query_current_chat && !item.switch_inline_query_chosen_chat && !item.copy_text) {
+          item.callback_data = item.text;
         }
         return item;
       });
@@ -680,4 +685,72 @@ export class GramlessContext {
     const targetUserId = userId || this.userId;
     return this.call('getUserProfilePhotos', { user_id: targetUserId, ...options });
   }
+
+  // --- Bot API 10.x: Rich Messages, Ephemeral Messages & Drafts ---
+
+  async sendRichMessage(richMessage, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      rich_message: richMessage,
+      ...options,
+    });
+    return this.call('sendRichMessage', payload);
+  }
+
+  async sendRichMessageDraft(richMessage, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('sendRichMessageDraft', {
+      chat_id: chatId,
+      rich_message: richMessage,
+      ...options,
+    });
+  }
+
+  async sendMessageDraft(draft, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('sendMessageDraft', {
+      chat_id: chatId,
+      draft,
+      ...options,
+    });
+  }
+
+  async sendLivePhoto(photo, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      live_photo: photo,
+      ...options,
+    });
+    return this.call('sendLivePhoto', payload);
+  }
+
+  async editEphemeralMessageText(text, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    const payload = normalizeMarkupOptions({
+      chat_id: chatId,
+      text,
+      ...options,
+    });
+    return this.call('editEphemeralMessageText', payload);
+  }
+
+  async deleteEphemeralMessage(ephemeralMessageId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('deleteEphemeralMessage', {
+      chat_id: chatId,
+      ephemeral_message_id: ephemeralMessageId,
+      ...options,
+    });
+  }
+
+  async answerGuestQuery(guestQueryId = null, options = {}) {
+    const queryId = guestQueryId || this.raw.guest_query_id;
+    return this.call('answerGuestQuery', {
+      guest_query_id: queryId,
+      ...options,
+    });
+  }
 }
+

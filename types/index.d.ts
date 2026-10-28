@@ -10,6 +10,12 @@ export interface InlineKeyboardButton {
   url?: string;
   webApp?: string | { url: string };
   web_app?: string | { url: string };
+  disabled?: boolean;
+  copy_text?: { text: string };
+  pay?: boolean;
+  switch_inline_query?: string;
+  switch_inline_query_current_chat?: string;
+  switch_inline_query_chosen_chat?: any;
 }
 
 export type InlineKeyboardRow = Array<string | InlineKeyboardButton>;
@@ -173,6 +179,15 @@ export class GramlessContext {
 
   getFile(fileId: string): Promise<any>;
   getUserProfilePhotos(userId?: number | null, options?: Record<string, any>): Promise<any>;
+
+  // Bot API 10.x
+  sendRichMessage(richMessage: any, options?: Record<string, any>): Promise<any>;
+  sendRichMessageDraft(richMessage: any, options?: Record<string, any>): Promise<any>;
+  sendMessageDraft(draft: any, options?: Record<string, any>): Promise<any>;
+  sendLivePhoto(photo: any, options?: Record<string, any>): Promise<any>;
+  editEphemeralMessageText(text: string, options?: Record<string, any>): Promise<any>;
+  deleteEphemeralMessage(ephemeralMessageId: number, options?: Record<string, any>): Promise<any>;
+  answerGuestQuery(guestQueryId?: string | null, options?: Record<string, any>): Promise<any>;
 }
 
 export type HandlerFunction = (ctx: GramlessContext) => Promise<any> | any;

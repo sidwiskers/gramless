@@ -410,6 +410,11 @@ export class GramlessRouter {
     if (ctx.update.my_chat_member || (ctx.raw.new_chat_member && ctx.raw.old_chat_member)) return 'my_chat_member';
     if (ctx.update.chat_member) return 'chat_member';
     if (ctx.update.chat_join_request || ctx.raw.invite_link) return 'chat_join_request';
+    if (ctx.update.guest_message) return 'guest_message';
+    if (ctx.update.subscription) return 'subscription';
+    if (ctx.update.stopped_message_generation) return 'stopped_message_generation';
+    if (ctx.raw.rich_message) return 'rich_message';
+    if (ctx.raw.live_photo) return 'live_photo';
     if (ctx.raw.photo) return 'photo';
     if (ctx.raw.document) return 'document';
     if (ctx.raw.voice) return 'voice';

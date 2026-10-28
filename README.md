@@ -1,7 +1,8 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-40%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/types-included-blue.svg)](types/index.d.ts)
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
