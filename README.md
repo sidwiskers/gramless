@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-32%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-38%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/types-included-blue.svg)](types/index.d.ts)
@@ -55,8 +55,8 @@ Gramless bridges this gap with zero compromises:
 | Metric / Capability | Vanilla TGCloud | Traditional Frameworks | Gramless |
 | :--- | :---: | :---: | :---: |
 | **Runtime Overhead** | Low (raw JS) | High (heavy bundle) | **Zero (pure ESM, 0 dependencies)** |
-| **Command Lookup (1,000 routes)** | $O(N)$ manual checks | $O(N)$ regex scanning | **$O(1)$ Hash Map (3.57 µs)** |
-| **Callback Dispatch** | Manual `.split(':')` | Regex matching | **Length-partitioned prefix trie (1.30 µs)** |
+| **Command Lookup (1,000 routes)** | $O(N)$ manual checks | $O(N)$ regex scanning | **$O(1)$ Hash Map (2.44 µs)** |
+| **Callback Dispatch** | Manual `.split(':')` | Regex matching | **Length-partitioned prefix trie (0.97 µs)** |
 | **Session Safety** | Manual SQL queries | Racy in-memory/Redis | **ACID SQLite with automatic rollback** |
 | **Bot API Method Coverage** | Raw `api.*` proxy | Varying | **100% typed Context facade + escape hatches** |
 | **Offline Testability** | None (push to cloud) | Requires live token | **Gramless Lab (100% in-process)** |
@@ -72,8 +72,8 @@ Recorded on an ARM64 host across 10,000 warm iterations (`npm run bench`):
 ```text
 --- Gramless Performance & Scale Benchmark ---
 [Results across 10,000 iterations]
-• Exact Command Dispatch (1,000 routes):  3.57 µs / op
-• Exact Action Dispatch  (500 routes):    1.30 µs / op
+• Exact Command Dispatch (1,000 routes):  2.44 µs / op
+• Exact Action Dispatch  (500 routes):    0.97 µs / op
 ----------------------------------------------
 ```
 
@@ -97,7 +97,7 @@ gramless/
 │   └── testkit/          # Gramless Lab: deterministic offline test harness
 ├── types/
 │   └── index.d.ts        # Comprehensive TypeScript definitions
-└── tests/                # 32 unit, integration, and benchmark tests
+└── tests/                # 38 unit, integration, and benchmark tests
 ```
 
 ---
