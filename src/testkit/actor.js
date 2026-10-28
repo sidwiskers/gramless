@@ -80,6 +80,20 @@ export class ActorExpectation {
   }
 
   /**
+   * Asserts that an inline query was answered.
+   * @param {number|null} [expectedCount=null]
+   */
+  wantInlineAnswered(expectedCount = null) {
+    const answered = this.calls.filter(c => c.method === 'answerInlineQuery');
+    assert.ok(answered.length > 0, 'Expected answerInlineQuery to be called, but none occurred');
+    if (expectedCount !== null) {
+      const results = answered[0].params.results || [];
+      assert.equal(results.length, expectedCount, `Expected ${expectedCount} inline results, got ${results.length}`);
+    }
+    return this;
+  }
+
+  /**
    * Chainable generic assertion matcher.
    * @param {Function} matcherFn (calls) => void
    */
@@ -177,6 +191,38 @@ export class LabActor {
     const update = {
       update_id: this.updateCounter++,
       callback_query: rawQuery,
+    };
+
+    await this.lab.router.handle(rawQuery, { update }, this.lab.api);
+
+    const callsSince = this.lab.api.calls.slice(startCallIndex);
+    return new ActorExpectation(callsSince);
+  }
+
+  /**
+   * Simulates sending an inline query (@bot query).
+   * @param {string} query
+   * @param {string} [offset='']
+   * @returns {Promise<ActorExpectation>}
+   */
+  async inlineQuery(query, offset = '') {
+    const startCallIndex = this.lab.api.calls.length;
+
+    const rawQuery = {
+      id: `inline_${this.updateCounter++}`,
+      from: {
+        id: this.id,
+        is_bot: false,
+        first_name: this.firstName,
+        username: this.username,
+      },
+      query,
+      offset,
+    };
+
+    const update = {
+      update_id: this.updateCounter++,
+      inline_query: rawQuery,
     };
 
     await this.lab.router.handle(rawQuery, { update }, this.lab.api);

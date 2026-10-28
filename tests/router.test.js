@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { GramlessRouter, parseCommand, composeMiddleware } from '../src/router.js';
 
 test('parseCommand: parses clean command and payload variations', () => {
-  assert.deepEqual(parseCommand('/start'), { command: 'start', payload: '' });
-  assert.deepEqual(parseCommand('/START'), { command: 'start', payload: '' });
-  assert.deepEqual(parseCommand('/start ref_123'), { command: 'start', payload: 'ref_123' });
-  assert.deepEqual(parseCommand('/help@GramlessBot details'), { command: 'help', payload: 'details' });
+  assert.deepEqual(parseCommand('/start'), { command: 'start', targetBot: null, payload: '', args: [] });
+  assert.deepEqual(parseCommand('/START'), { command: 'start', targetBot: null, payload: '', args: [] });
+  assert.deepEqual(parseCommand('/start ref_123'), { command: 'start', targetBot: null, payload: 'ref_123', args: ['ref_123'] });
+  assert.deepEqual(parseCommand('/help@GramlessBot details 42'), { command: 'help', targetBot: 'gramlessbot', payload: 'details 42', args: ['details', '42'] });
   assert.equal(parseCommand('hello world'), null);
   assert.equal(parseCommand(''), null);
 });

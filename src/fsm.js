@@ -63,31 +63,51 @@ export class FsmMachine {
       }
 
       // Provide FSM control methods on context
+      const sessionProp = this.sessionProperty;
       ctx.fsm = {
+        /** Whether user is in an active FSM conversation */
+        get active() {
+          return Boolean(ctx.session[sessionProp]?.step);
+        },
         /** Current active step name */
         get current() {
-          return ctx.session[this.sessionProperty]?.step || null;
+          return ctx.session[sessionProp]?.step || null;
         },
         /** Stored conversation payload/data */
         get data() {
-          if (!ctx.session[this.sessionProperty]) {
-            ctx.session[this.sessionProperty] = { step: null, data: {} };
+          if (!ctx.session[sessionProp]) {
+            ctx.session[sessionProp] = { step: null, data: {}, history: [] };
           }
-          return ctx.session[this.sessionProperty].data;
+          return ctx.session[sessionProp].data;
         },
         /** Advance or transition to a specific step */
         goto: (stepName, payload = {}) => {
           if (!this.steps.has(stepName)) {
             throw new GramlessError(`Unknown FSM target step: "${stepName}"`);
           }
-          ctx.session[this.sessionProperty] = {
+          const prev = ctx.session[sessionProp] || { step: null, data: {}, history: [] };
+          const history = Array.isArray(prev.history) ? [...prev.history] : [];
+          if (prev.step) history.push(prev.step);
+
+          ctx.session[sessionProp] = {
             step: stepName,
-            data: { ...(ctx.session[this.sessionProperty]?.data || {}), ...payload },
+            data: { ...prev.data, ...payload },
+            history,
           };
+        },
+        /** Reverts to the previous step in history, returning true if succeeded */
+        back: () => {
+          const current = ctx.session[sessionProp];
+          if (!current || !Array.isArray(current.history) || current.history.length === 0) {
+            return false;
+          }
+          const prevStep = current.history.pop();
+          current.step = prevStep;
+          return true;
         },
         /** Complete and exit the flow */
         complete: () => {
-          delete ctx.session[this.sessionProperty];
+          delete ctx.session[sessionProp];
         },
       };
 

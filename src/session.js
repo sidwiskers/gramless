@@ -112,6 +112,46 @@ export class TgCloudSessionStore {
 }
 
 /**
+ * In-process Keyed Mutex
+ * Ensures concurrent operations for the same session key (e.g. rapid double-taps)
+ * are executed sequentially to prevent lost read-modify-write race conditions.
+ */
+export class KeyedMutex {
+  constructor() {
+    /** @type {Map<string, Promise<void>>} */
+    this.queues = new Map();
+  }
+
+  /**
+   * Acquires the lock for a given key, runs the callback, and releases the lock.
+   * @template T
+   * @param {string} key
+   * @param {() => Promise<T>} fn
+   * @returns {Promise<T>}
+   */
+  async acquire(key, fn) {
+    const prevPromise = this.queues.get(key) || Promise.resolve();
+
+    let release;
+    const currentPromise = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    this.queues.set(key, prevPromise.then(() => currentPromise));
+
+    try {
+      await prevPromise;
+      return await fn();
+    } finally {
+      release();
+      if (this.queues.get(key) === currentPromise) {
+        this.queues.delete(key);
+      }
+    }
+  }
+}
+
+/**
  * Creates a transactional session middleware.
  * 
  * @param {Object} options
@@ -124,6 +164,7 @@ export function session(options = {}) {
   const store = options.store || new MemorySessionStore();
   const getKey = options.getKey || SessionKey.byChatUser;
   const initial = options.initial || (() => ({}));
+  const mutex = new KeyedMutex();
 
   return async function sessionMiddleware(ctx, next) {
     const key = getKey(ctx);
@@ -132,35 +173,35 @@ export function session(options = {}) {
       return next();
     }
 
-    // 1. Fetch current committed state
-    const savedData = await store.get(key);
-    const originalSnapshot = savedData ? JSON.stringify(savedData) : null;
+    return mutex.acquire(key, async () => {
+      // 1. Fetch current committed state
+      const savedData = await store.get(key);
+      const originalSnapshot = savedData ? JSON.stringify(savedData) : null;
 
-    // 2. Working copy for handler execution
-    let workingCopy = savedData !== null ? savedData : initial();
-    ctx.session = workingCopy;
+      // 2. Working copy for handler execution
+      let workingCopy = savedData !== null ? savedData : initial();
+      ctx.session = workingCopy;
 
-    try {
-      // 3. Execute downstream handlers
-      await next();
+      try {
+        // 3. Execute downstream handlers
+        await next();
 
-      // 4. On handler SUCCESS: Commit changes
-      if (ctx.session === null) {
-        // Explicitly cleared session
-        await store.delete(key);
-      } else {
-        const currentSnapshot = JSON.stringify(ctx.session);
-        // Only write to store if state actually changed
-        if (currentSnapshot !== originalSnapshot) {
-          await store.set(key, ctx.session);
+        // 4. On handler SUCCESS: Commit changes
+        if (ctx.session === null) {
+          // Explicitly cleared session
+          await store.delete(key);
+        } else {
+          const currentSnapshot = JSON.stringify(ctx.session);
+          // Only write to store if state actually changed
+          if (currentSnapshot !== originalSnapshot) {
+            await store.set(key, ctx.session);
+          }
         }
+      } catch (err) {
+        // 5. On handler ERROR / PANIC: Automatic Rollback!
+        ctx.session = originalSnapshot ? JSON.parse(originalSnapshot) : initial();
+        throw err;
       }
-    } catch (err) {
-      // 5. On handler ERROR / PANIC: Automatic Rollback!
-      // We do NOT write `ctx.session` to `store`.
-      // The pending uncommitted modifications are discarded immediately.
-      ctx.session = originalSnapshot ? JSON.parse(originalSnapshot) : initial();
-      throw err;
-    }
+    });
   };
 }

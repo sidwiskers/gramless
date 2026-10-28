@@ -77,6 +77,17 @@ export class GramlessContext {
   params: Record<string, string>;
   state: Record<string, any>;
   session: any;
+  command: string | null;
+  payload: string;
+  args: string[];
+  fsm?: {
+    readonly active: boolean;
+    readonly current: string | null;
+    readonly data: Record<string, any>;
+    goto(stepName: string, payload?: Record<string, any>): void;
+    back(): boolean;
+    complete(): void;
+  };
 
   readonly message: Record<string, any> | null;
   readonly chatId: number | string | null;
@@ -85,6 +96,11 @@ export class GramlessContext {
   readonly userId: number | null;
   readonly text: string;
   readonly data: string | null;
+  readonly inlineQuery: Record<string, any> | null;
+  readonly poll: Record<string, any> | null;
+  readonly pollAnswer: Record<string, any> | null;
+  readonly oldChatMember: Record<string, any> | null;
+  readonly newChatMember: Record<string, any> | null;
   readonly isPrivate: boolean;
   readonly isGroup: boolean;
   readonly isChannel: boolean;
@@ -142,6 +158,21 @@ export class GramlessContext {
   exportInviteLink(): Promise<any>;
   setMyCommands(commands: Array<{ command: string; description: string }>, options?: Record<string, any>): Promise<any>;
   getMyCommands(options?: Record<string, any>): Promise<any>;
+
+  answerInlineQuery(results: Array<Record<string, any>>, options?: Record<string, any>): Promise<any>;
+  answerShippingQuery(ok: boolean, options?: Record<string, any>): Promise<any>;
+  answerPreCheckoutQuery(ok: boolean, errorMessage?: string): Promise<any>;
+  sendInvoice(params: Record<string, any>): Promise<any>;
+  createInvoiceLink(params: Record<string, any>): Promise<string>;
+
+  createForumTopic(name: string, options?: Record<string, any>): Promise<any>;
+  editForumTopic(messageThreadId: number, options?: Record<string, any>): Promise<any>;
+  closeForumTopic(messageThreadId: number): Promise<any>;
+  reopenForumTopic(messageThreadId: number): Promise<any>;
+  deleteForumTopic(messageThreadId: number): Promise<any>;
+
+  getFile(fileId: string): Promise<any>;
+  getUserProfilePhotos(userId?: number | null, options?: Record<string, any>): Promise<any>;
 }
 
 export type HandlerFunction = (ctx: GramlessContext) => Promise<any> | any;
@@ -149,7 +180,13 @@ export type MiddlewareFunction = (ctx: GramlessContext, next: () => Promise<void
 export type FilterPredicate = (ctx: GramlessContext) => Promise<boolean> | boolean;
 
 export class GramlessRouter {
-  constructor(options?: { filter?: FilterPredicate; api?: any; onError?: (err: Error, ctx: GramlessContext) => any });
+  constructor(options?: {
+    filter?: FilterPredicate;
+    api?: any;
+    onError?: (err: Error, ctx: GramlessContext) => any;
+    username?: string;
+    botUsername?: string;
+  });
   use(...middlewares: Array<MiddlewareFunction | MiddlewareFunction[]>): this;
   command(names: string | string[], ...handlers: HandlerFunction[]): this;
   action(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;

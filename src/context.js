@@ -158,6 +158,9 @@ export class GramlessContext {
     this.params = {};
     this.state = {};
     this.session = null;
+    this.command = null;
+    this.payload = '';
+    this.args = [];
   }
 
   // --- Identifiers & Extraction ---
@@ -192,6 +195,26 @@ export class GramlessContext {
 
   get data() {
     return this.raw.data ?? null;
+  }
+
+  get inlineQuery() {
+    return this.raw.query !== undefined ? this.raw : (this.update.inline_query || null);
+  }
+
+  get poll() {
+    return this.raw.poll || this.message?.poll || this.update.poll || null;
+  }
+
+  get pollAnswer() {
+    return this.raw.poll_id !== undefined ? this.raw : (this.update.poll_answer || null);
+  }
+
+  get oldChatMember() {
+    return this.raw.old_chat_member || this.update.chat_member?.old_chat_member || this.update.my_chat_member?.old_chat_member || null;
+  }
+
+  get newChatMember() {
+    return this.raw.new_chat_member || this.update.chat_member?.new_chat_member || this.update.my_chat_member?.new_chat_member || null;
   }
 
   get isPrivate() {
@@ -238,7 +261,18 @@ export class GramlessContext {
   async reply(text, options = {}) {
     const chatId = options.chat_id || this.chatId;
     if (!chatId) throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
+
     const payload = normalizeMarkupOptions({ chat_id: chatId, text, ...options });
+
+    // Ergonomic reply quoting (Bot API 7.0+)
+    if (options.quote || options.replyToCurrent) {
+      if (this.messageId) {
+        payload.reply_parameters = { message_id: this.messageId };
+      }
+      delete payload.quote;
+      delete payload.replyToCurrent;
+    }
+
     return this.call('sendMessage', payload);
   }
 
@@ -566,5 +600,78 @@ export class GramlessContext {
 
   async getMyCommands(options = {}) {
     return this.call('getMyCommands', options);
+  }
+
+  // --- Inline Queries ---
+
+  async answerInlineQuery(results, options = {}) {
+    const queryId = this.inlineQuery?.id || this.raw.id;
+    if (!queryId) throw new ApiError('answerInlineQuery', 'No inline_query_id available', 400);
+    return this.call('answerInlineQuery', {
+      inline_query_id: queryId,
+      results,
+      ...options,
+    });
+  }
+
+  // --- Payments ---
+
+  async answerShippingQuery(ok, options = {}) {
+    const queryId = this.raw.id || this.update.shipping_query?.id;
+    return this.call('answerShippingQuery', { shipping_query_id: queryId, ok, ...options });
+  }
+
+  async answerPreCheckoutQuery(ok, errorMessage = '') {
+    const queryId = this.raw.id || this.update.pre_checkout_query?.id;
+    const payload = { pre_checkout_query_id: queryId, ok };
+    if (!ok && errorMessage) payload.error_message = errorMessage;
+    return this.call('answerPreCheckoutQuery', payload);
+  }
+
+  async sendInvoice(params) {
+    const chatId = params.chat_id || this.chatId;
+    return this.call('sendInvoice', { chat_id: chatId, ...params });
+  }
+
+  async createInvoiceLink(params) {
+    return this.call('createInvoiceLink', params);
+  }
+
+  // --- Forum Topics ---
+
+  async createForumTopic(name, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('createForumTopic', { chat_id: chatId, name, ...options });
+  }
+
+  async editForumTopic(messageThreadId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('editForumTopic', { chat_id: chatId, message_thread_id: messageThreadId, ...options });
+  }
+
+  async closeForumTopic(messageThreadId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('closeForumTopic', { chat_id: chatId, message_thread_id: messageThreadId, ...options });
+  }
+
+  async reopenForumTopic(messageThreadId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('reopenForumTopic', { chat_id: chatId, message_thread_id: messageThreadId, ...options });
+  }
+
+  async deleteForumTopic(messageThreadId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('deleteForumTopic', { chat_id: chatId, message_thread_id: messageThreadId, ...options });
+  }
+
+  // --- Files & Users ---
+
+  async getFile(fileId) {
+    return this.call('getFile', { file_id: fileId });
+  }
+
+  async getUserProfilePhotos(userId = null, options = {}) {
+    const targetUserId = userId || this.userId;
+    return this.call('getUserProfilePhotos', { user_id: targetUserId, ...options });
   }
 }

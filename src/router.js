@@ -42,28 +42,35 @@ export function composeMiddleware(middlewares, targetHandler) {
 }
 
 /**
- * Extracts command name and arguments from message text.
- * Handles /command, /command@bot_name, and trailing arguments.
+ * Extracts command name, target bot username, and arguments from message text.
+ * Handles /command, /command@bot_name, and multiline or tabbed trailing arguments.
  * 
  * @param {string} text
- * @returns {{ command: string, payload: string } | null}
+ * @param {string|null} [botUsername=null]
+ * @returns {{ command: string, targetBot: string|null, payload: string, args: string[] } | null}
  */
-export function parseCommand(text) {
+export function parseCommand(text, botUsername = null) {
   if (!text || text.charCodeAt(0) !== 47 /* '/' */) return null;
 
-  let spaceIndex = text.indexOf(' ');
-  if (spaceIndex === -1) spaceIndex = text.length;
+  const match = text.match(/^\/([a-zA-Z0-9_]+)(?:@([a-zA-Z0-9_]+))?(?:\s+([\s\S]*))?$/);
+  if (!match) return null;
 
-  let commandPart = text.slice(1, spaceIndex);
-  const atIndex = commandPart.indexOf('@');
-  if (atIndex !== -1) {
-    commandPart = commandPart.slice(0, atIndex);
+  const rawCommand = match[1].toLowerCase();
+  const targetBot = match[2] ? match[2].toLowerCase() : null;
+  const payload = match[3] ? match[3].trim() : '';
+
+  // If command is addressed to a different bot in a group chat, ignore it
+  if (targetBot && botUsername && targetBot !== botUsername.toLowerCase()) {
+    return null;
   }
 
-  const payload = text.slice(spaceIndex).trim();
+  const args = payload.length > 0 ? payload.split(/\s+/) : [];
+
   return {
-    command: commandPart.toLowerCase(),
+    command: rawCommand,
+    targetBot,
     payload,
+    args,
   };
 }
 
@@ -78,6 +85,7 @@ export class GramlessRouter {
     this.filter = options.filter || null;
     this.api = options.api || null;
     this.onError = options.onError || null;
+    this.username = (options.username || options.botUsername || '').replace(/^@/, '');
 
     /** @type {Array<Function>} */
     this.middlewares = [];
@@ -212,6 +220,7 @@ export class GramlessRouter {
       filter,
       api: this.api,
       onError: this.onError,
+      username: this.username,
     });
     this.subRouters.push(child);
     return child;
@@ -298,11 +307,14 @@ export class GramlessRouter {
 
     // 1. Exact Commands ($O(1) Map lookup)
     if (text && text.charCodeAt(0) === 47 /* '/' */) {
-      const parsed = parseCommand(text);
+      const parsed = parseCommand(text, this.username);
       if (parsed) {
         const cmdHandler = this.commands.get(parsed.command);
         if (cmdHandler) {
           ctx.match = [text, parsed.payload];
+          ctx.command = parsed.command;
+          ctx.payload = parsed.payload;
+          ctx.args = parsed.args;
           await cmdHandler(ctx);
           return true;
         }
@@ -388,14 +400,29 @@ export class GramlessRouter {
    * @private
    */
   _resolveEventType(ctx) {
-    if (ctx.raw.data !== undefined) return 'callback_query';
+    if (ctx.raw.data !== undefined || ctx.update.callback_query) return 'callback_query';
+    if (ctx.raw.query !== undefined || ctx.update.inline_query) return 'inline_query';
+    if (ctx.raw.result_id !== undefined || ctx.update.chosen_inline_result) return 'chosen_inline_result';
+    if (ctx.raw.shipping_address || ctx.update.shipping_query) return 'shipping_query';
+    if (ctx.raw.total_amount !== undefined || ctx.update.pre_checkout_query) return 'pre_checkout_query';
+    if (ctx.raw.poll_id !== undefined || ctx.update.poll_answer) return 'poll_answer';
+    if (ctx.raw.options && ctx.raw.question || ctx.update.poll) return 'poll';
+    if (ctx.update.my_chat_member || (ctx.raw.new_chat_member && ctx.raw.old_chat_member)) return 'my_chat_member';
+    if (ctx.update.chat_member) return 'chat_member';
+    if (ctx.update.chat_join_request || ctx.raw.invite_link) return 'chat_join_request';
     if (ctx.raw.photo) return 'photo';
     if (ctx.raw.document) return 'document';
     if (ctx.raw.voice) return 'voice';
     if (ctx.raw.audio) return 'audio';
     if (ctx.raw.video) return 'video';
+    if (ctx.raw.video_note) return 'video_note';
+    if (ctx.raw.sticker) return 'sticker';
+    if (ctx.raw.animation) return 'animation';
+    if (ctx.raw.location) return 'location';
+    if (ctx.raw.contact) return 'contact';
+    if (ctx.raw.dice) return 'dice';
     if (ctx.raw.text) return 'text';
-    if (ctx.raw.chat) return 'message';
+    if (ctx.raw.chat || ctx.update.message) return 'message';
     return null;
   }
 
