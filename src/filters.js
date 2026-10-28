@@ -1,7 +1,7 @@
 /**
  * Gramless Composable Filters Engine
  * 
- * Provides zero-allocation, functional filter predicates inspired by Hermes.
+ * Provides zero-allocation, functional filter predicates.
  */
 
 export const Filter = {

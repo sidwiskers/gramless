@@ -2,7 +2,7 @@
  * Gramless: The Zero-Compromise Telegram Serverless Framework
  * 
  * Engineered for TGCloud and V8 Isolates.
- * Inspired by the systems discipline of Hermes.
+ * Built with zero-allocation systems discipline.
  */
 
 import { GramlessRouter } from './router.js';

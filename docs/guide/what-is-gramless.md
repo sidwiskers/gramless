@@ -2,7 +2,7 @@
 
 **Gramless** is an ultra-fast, zero-dependency, transactional Telegram framework engineered from first principles specifically for **Telegram Serverless (TGCloud)** and isolated V8 environments.
 
-Inspired by the systems discipline of [Hermes](https://github.com/sidwiskers/hermes), Gramless replaces raw isolate `if/else` boilerplate with constant-time routing, transactional SQLite state with automatic rollback, composable filters, full Bot API method coverage, type-safe Mini App RPC endpoints, and hermetic offline testing via **Gramless Lab**.
+Built with zero-allocation systems discipline, Gramless replaces raw isolate `if/else` boilerplate with constant-time routing, transactional SQLite state with automatic rollback, composable filters, full Bot API method coverage, type-safe Mini App RPC endpoints, and hermetic offline testing via **Gramless Lab**.
 
 ---
 

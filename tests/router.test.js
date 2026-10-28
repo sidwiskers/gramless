@@ -173,6 +173,6 @@ test('GramlessRouter: scale benchmark (1,000 registered routes)', async () => {
   const duration = performance.now() - start;
   const avgMicroseconds = (duration / iterations) * 1000;
 
-  // Hermes benchmark standard: $O(1)$ dispatch on mobile ARM resolves in microseconds
+  // Scale benchmark standard: O(1) dispatch on mobile ARM resolves in microseconds
   assert.ok(avgMicroseconds < 250, `Average dispatch took ${avgMicroseconds.toFixed(2)}µs, expected < 250µs`);
 });
