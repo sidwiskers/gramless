@@ -522,10 +522,16 @@ export class GramlessContext {
   async answer(text = '', options = {}) {
     const queryId = this.raw.id;
     if (!queryId) return null;
+    let textStr = text;
+    let opts = options;
+    if (typeof text === 'object' && text !== null) {
+      opts = text;
+      textStr = opts.text || '';
+    }
     return this.call('answerCallbackQuery', {
       callback_query_id: queryId,
-      text,
-      ...options,
+      text: textStr,
+      ...opts,
     });
   }
 
