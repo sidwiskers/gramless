@@ -533,11 +533,18 @@ export class GramlessContext {
       opts = text;
       textStr = opts.text || '';
     }
-    return this.call('answerCallbackQuery', {
-      callback_query_id: queryId,
-      text: textStr,
-      ...opts,
-    });
+    try {
+      return await this.call('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: textStr,
+        ...opts,
+      });
+    } catch (err) {
+      if (err?.code === 400 || (err?.description && err.description.includes('query is too old'))) {
+        return null;
+      }
+      throw err;
+    }
   }
 
   async alert(text) {
