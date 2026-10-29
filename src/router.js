@@ -390,9 +390,9 @@ export class GramlessRouter {
       }
     }
 
-    // 5. Update Event Type matching ('message', 'photo', 'callback_query')
-    const eventType = this._resolveEventType(ctx);
-    if (eventType) {
+    // 5. Update Event Type matching (hierarchical: specific -> general, e.g. 'text' -> 'message')
+    const eventTypes = this._resolveEventTypes(ctx);
+    for (const eventType of eventTypes) {
       const handlers = this.eventRoutes.get(eventType);
       if (handlers && handlers.length > 0) {
         for (const handler of handlers) {
@@ -406,39 +406,68 @@ export class GramlessRouter {
   }
 
   /**
-   * Determines the event type name from the context.
+   * Resolves hierarchical candidate event types from the context (ordered specific to general).
+   * @param {GramlessContext} ctx
+   * @returns {string[]}
+   * @private
+   */
+  _resolveEventTypes(ctx) {
+    const types = [];
+    const isMessage = Boolean(
+      ctx.raw?.chat ||
+      ctx.update?.message ||
+      ctx.update?.channel_post ||
+      ctx.update?.edited_message ||
+      ctx.update?.edited_channel_post
+    );
+
+    if (ctx.raw?.data !== undefined || ctx.update?.callback_query) types.push('callback_query');
+    if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');
+    if (ctx.raw?.result_id !== undefined || ctx.update?.chosen_inline_result) types.push('chosen_inline_result');
+    if (ctx.raw?.shipping_address || ctx.update?.shipping_query) types.push('shipping_query');
+    if (ctx.raw?.total_amount !== undefined || ctx.update?.pre_checkout_query) types.push('pre_checkout_query');
+    if (ctx.raw?.poll_id !== undefined || ctx.update?.poll_answer) types.push('poll_answer');
+    if ((ctx.raw?.options && ctx.raw?.question) || ctx.update?.poll) types.push('poll');
+    if (ctx.update?.my_chat_member || (ctx.raw?.new_chat_member && ctx.raw?.old_chat_member)) types.push('my_chat_member');
+    if (ctx.update?.chat_member) types.push('chat_member');
+    if (ctx.update?.chat_join_request || ctx.raw?.invite_link) types.push('chat_join_request');
+    if (ctx.update?.guest_message) types.push('guest_message');
+    if (ctx.update?.subscription) types.push('subscription');
+    if (ctx.update?.stopped_message_generation) types.push('stopped_message_generation');
+
+    if (ctx.update?.channel_post) types.push('channel_post');
+    if (ctx.update?.edited_message) types.push('edited_message');
+
+    if (ctx.raw?.rich_message) types.push('rich_message');
+    if (ctx.raw?.live_photo) types.push('live_photo');
+    if (ctx.raw?.photo) types.push('photo');
+    if (ctx.raw?.document) types.push('document');
+    if (ctx.raw?.voice) types.push('voice');
+    if (ctx.raw?.audio) types.push('audio');
+    if (ctx.raw?.video) types.push('video');
+    if (ctx.raw?.video_note) types.push('video_note');
+    if (ctx.raw?.sticker) types.push('sticker');
+    if (ctx.raw?.animation) types.push('animation');
+    if (ctx.raw?.location) types.push('location');
+    if (ctx.raw?.contact) types.push('contact');
+    if (ctx.raw?.dice) types.push('dice');
+    if (ctx.raw?.text) types.push('text');
+
+    // General 'message' catch-all for any message-family update
+    if (isMessage && !types.includes('message')) {
+      types.push('message');
+    }
+
+    return types;
+  }
+
+  /**
+   * Determines primary event type name from the context.
    * @private
    */
   _resolveEventType(ctx) {
-    if (ctx.raw.data !== undefined || ctx.update.callback_query) return 'callback_query';
-    if (ctx.raw.query !== undefined || ctx.update.inline_query) return 'inline_query';
-    if (ctx.raw.result_id !== undefined || ctx.update.chosen_inline_result) return 'chosen_inline_result';
-    if (ctx.raw.shipping_address || ctx.update.shipping_query) return 'shipping_query';
-    if (ctx.raw.total_amount !== undefined || ctx.update.pre_checkout_query) return 'pre_checkout_query';
-    if (ctx.raw.poll_id !== undefined || ctx.update.poll_answer) return 'poll_answer';
-    if (ctx.raw.options && ctx.raw.question || ctx.update.poll) return 'poll';
-    if (ctx.update.my_chat_member || (ctx.raw.new_chat_member && ctx.raw.old_chat_member)) return 'my_chat_member';
-    if (ctx.update.chat_member) return 'chat_member';
-    if (ctx.update.chat_join_request || ctx.raw.invite_link) return 'chat_join_request';
-    if (ctx.update.guest_message) return 'guest_message';
-    if (ctx.update.subscription) return 'subscription';
-    if (ctx.update.stopped_message_generation) return 'stopped_message_generation';
-    if (ctx.raw.rich_message) return 'rich_message';
-    if (ctx.raw.live_photo) return 'live_photo';
-    if (ctx.raw.photo) return 'photo';
-    if (ctx.raw.document) return 'document';
-    if (ctx.raw.voice) return 'voice';
-    if (ctx.raw.audio) return 'audio';
-    if (ctx.raw.video) return 'video';
-    if (ctx.raw.video_note) return 'video_note';
-    if (ctx.raw.sticker) return 'sticker';
-    if (ctx.raw.animation) return 'animation';
-    if (ctx.raw.location) return 'location';
-    if (ctx.raw.contact) return 'contact';
-    if (ctx.raw.dice) return 'dice';
-    if (ctx.raw.text) return 'text';
-    if (ctx.raw.chat || ctx.update.message) return 'message';
-    return null;
+    const types = this._resolveEventTypes(ctx);
+    return types.length > 0 ? types[0] : null;
   }
 
   /**

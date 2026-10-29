@@ -176,3 +176,33 @@ test('GramlessRouter: scale benchmark (1,000 registered routes)', async () => {
   // Scale benchmark standard: O(1) dispatch on mobile ARM resolves in microseconds
   assert.ok(avgMicroseconds < 250, `Average dispatch took ${avgMicroseconds.toFixed(2)}µs, expected < 250µs`);
 });
+
+test('GramlessRouter: hierarchical event matching (bot.on message catches text, photo, etc.)', async () => {
+  const router = new GramlessRouter();
+  const events = [];
+
+  // General message listener
+  router.on('message', async (ctx) => {
+    events.push(`general_message:${ctx.text || 'media'}`);
+  });
+
+  // Specific sticker listener
+  router.on('sticker', async (ctx) => {
+    events.push('specific_sticker');
+  });
+
+  // 1. Text message -> matches 'message' since no specific 'text' handler is registered
+  await router.handle({ chat: { id: 1 }, text: 'Hello World' });
+
+  // 2. Photo message -> matches 'message' since no specific 'photo' handler is registered
+  await router.handle({ chat: { id: 1 }, photo: [{ file_id: 'ph1' }] });
+
+  // 3. Sticker message -> matches 'sticker' first because specific sub-type takes precedence
+  await router.handle({ chat: { id: 1 }, sticker: { file_id: 'st1' } });
+
+  assert.deepEqual(events, [
+    'general_message:Hello World',
+    'general_message:media',
+    'specific_sticker',
+  ]);
+});
