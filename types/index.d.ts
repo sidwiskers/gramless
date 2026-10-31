@@ -476,6 +476,37 @@ export class MessageCleaner {
 export function createCleaner(options?: any): MessageCleaner;
 export function cleaner(options?: { autoCleanOnCommand?: boolean }): MiddlewareFunction;
 
+// --- Safe Formatting & Templates ---
+export class RawString {
+  value: string;
+  constructor(value: any);
+  toString(): string;
+}
+
+export function raw(val: any): RawString;
+export function escapeHtml(text: any): string;
+export function escapeMarkdown(text: any): string;
+export function escapeMarkdownV1(text: any): string;
+export function html(strings: TemplateStringsArray, ...values: any[]): string;
+export function md(strings: TemplateStringsArray, ...values: any[]): string;
+
+export interface Fmt {
+  bold(text: any): RawString;
+  italic(text: any): RawString;
+  underline(text: any): RawString;
+  strikethrough(text: any): RawString;
+  strike(text: any): RawString;
+  spoiler(text: any): RawString;
+  code(text: any): RawString;
+  pre(text: any, language?: string): RawString;
+  link(text: any, url: string): RawString;
+  mention(name: any, userId: number | string): RawString;
+  customEmoji(fallbackText: any, emojiId: string): RawString;
+  blockquote(text: any, expandable?: boolean): RawString;
+}
+
+export const fmt: Fmt;
+
 export function createBot(options?: {
   api?: any;
   onError?: (err: Error, ctx: GramlessContext) => any;

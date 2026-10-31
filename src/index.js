@@ -42,6 +42,16 @@ export { mediaGroup, MediaGroupAggregator } from './media_group.js';
 export { autoRetry, wrapApi, executeWithRetry } from './auto_retry.js';
 export { createStatelessQuestion, StatelessQuestion } from './stateless_question.js';
 export { cleaner, createCleaner, MessageCleaner } from './cleaner.js';
+export {
+  html,
+  md,
+  fmt,
+  raw,
+  RawString,
+  escapeHtml,
+  escapeMarkdown,
+  escapeMarkdownV1,
+} from './format.js';
 
 /**
  * Creates a new Gramless bot application router.

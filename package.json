@@ -1,6 +1,6 @@
 {
   "name": "gramless",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Ultra-fast, zero-dependency, transactional Telegram Serverless framework engineered for TGCloud",
   "type": "module",
   "main": "src/index.js",
@@ -8,7 +8,8 @@
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
-      "import": "./src/index.js"
+      "import": "./src/index.js",
+      "default": "./src/index.js"
     },
     "./filters": "./src/filters.js",
     "./testkit": "./src/testkit/index.js",
@@ -23,7 +24,8 @@
     "./media-group": "./src/media_group.js",
     "./auto-retry": "./src/auto_retry.js",
     "./stateless-question": "./src/stateless_question.js",
-    "./cleaner": "./src/cleaner.js"
+    "./cleaner": "./src/cleaner.js",
+    "./format": "./src/format.js"
   },
   "scripts": {
     "test": "node --test tests/*.test.js",
