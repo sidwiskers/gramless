@@ -1,6 +1,6 @@
 {
   "name": "gramless",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Ultra-fast, zero-dependency, transactional Telegram Serverless framework engineered for TGCloud",
   "type": "module",
   "main": "src/index.js",
@@ -14,7 +14,12 @@
     "./testkit": "./src/testkit/index.js",
     "./session": "./src/session.js",
     "./fsm": "./src/fsm.js",
-    "./endpoint": "./src/endpoint.js"
+    "./endpoint": "./src/endpoint.js",
+    "./ratelimit": "./src/ratelimit.js",
+    "./i18n": "./src/i18n.js",
+    "./menu": "./src/menu.js",
+    "./deeplink": "./src/deeplink.js",
+    "./payments": "./src/payments.js"
   },
   "scripts": {
     "test": "node --test tests/*.test.js",

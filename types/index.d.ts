@@ -94,6 +94,12 @@ export class GramlessContext {
     back(): boolean;
     complete(): void;
   };
+  t?: (key: string, params?: Record<string, any>) => string;
+  locale?: string;
+  setLocale?: (newLocale: string) => void;
+  rateLimit?: { limit: number; remaining: number; resetMs: number };
+  deepLink?: { payload: string; decoded: string; params: Record<string, string>; match: any };
+  payment?: Record<string, any>;
 
   readonly message: Record<string, any> | null;
   readonly chatId: number | string | null;
@@ -317,9 +323,114 @@ export function createEndpoint(
   handler?: (ctx: { input: any; user: any; initData: any; rawCtx: any }) => Promise<any> | any
 ): (input: any, ctx: any) => Promise<any>;
 
+// --- Rate Limiting ---
+export class MemoryRateLimitStore {
+  consume(key: string, limit: number, windowMs: number): { ok: boolean; remaining: number; retryAfterMs: number; resetMs: number };
+  clear(key?: string): void;
+}
+
+export const RateLimitKey: {
+  byUser(ctx: GramlessContext): string | null;
+  byChat(ctx: GramlessContext): string | null;
+  byChatUser(ctx: GramlessContext): string | null;
+};
+
+export function rateLimit(options?: {
+  limit?: number;
+  window?: string | number;
+  key?: (ctx: GramlessContext) => string | null;
+  store?: MemoryRateLimitStore;
+  skip?: (ctx: GramlessContext) => boolean | Promise<boolean>;
+  onLimitReached?: (ctx: GramlessContext, info: { limit: number; windowMs: number; retryAfterMs: number; resetMs: number }) => Promise<void> | void;
+}): MiddlewareFunction;
+
+// --- i18n ---
+export class I18nEngine {
+  constructor(options?: {
+    defaultLocale?: string;
+    locales?: Record<string, Record<string, any>>;
+    resolveLocale?: (ctx: GramlessContext) => string;
+  });
+  loadLocale(locale: string, data: Record<string, any>): this;
+  t(locale: string, key: string, params?: Record<string, any>): string;
+  middleware(): MiddlewareFunction;
+}
+
+export function createI18n(options?: {
+  defaultLocale?: string;
+  locales?: Record<string, Record<string, any>>;
+  resolveLocale?: (ctx: GramlessContext) => string;
+}): I18nEngine;
+
+// --- Menu & Pagination ---
+export interface PaginationOptions<T> {
+  items: T[];
+  pageSize?: number;
+  page?: number;
+  formatItem: (item: T, pageIndex: number, globalIndex: number) => string;
+  header?: string | ((page: number, totalPages: number, count: number) => string);
+  footer?: string | ((page: number, totalPages: number, count: number) => string);
+  callbackPrefix?: string;
+  itemButtons?: (item: T, pageIndex: number, globalIndex: number) => any;
+  extraButtons?: any[][];
+  prevText?: string;
+  nextText?: string;
+  pageText?: (page: number, totalPages: number) => string;
+  editMessage?: boolean;
+  replyOptions?: Record<string, any>;
+}
+
+export function paginate<T>(
+  ctx: GramlessContext,
+  options: PaginationOptions<T>
+): Promise<{ text: string; buttons: any[][]; page: number; totalPages: number; totalCount: number }>;
+
+export class Menu {
+  id: string;
+  constructor(id: string);
+  text(text: string, handler: (ctx: GramlessContext) => any, actionId?: string): this;
+  url(text: string, url: string): this;
+  webApp(text: string, url: string): this;
+  row(): this;
+  build(): any[][];
+  register(router: GramlessRouter): this;
+}
+
+// --- Deep Linking ---
+export function createDeepLink(botUsername: string, payload?: string, options?: { group?: boolean }): string;
+export function decodeDeepLinkPayload(payload: string): string;
+
+export class DeepLinkRouter {
+  on(pattern: string | RegExp, handler: (ctx: GramlessContext) => any): this;
+  fallback(handler: (ctx: GramlessContext) => any): this;
+  middleware(): MiddlewareFunction;
+}
+
+export function createDeepLinkRouter(): DeepLinkRouter;
+
+// --- Payments & Telegram Stars ---
+export class StarsEngine {
+  constructor(options?: { currency?: string });
+  sendInvoice(
+    ctx: GramlessContext,
+    invoice: { title: string; description: string; stars: number; payload?: string; photoUrl?: string; options?: Record<string, any> }
+  ): Promise<any>;
+  createInvoiceLink(
+    ctx: GramlessContext,
+    invoice: { title: string; description: string; stars: number; payload?: string }
+  ): Promise<string>;
+  onPreCheckout(validator: (ctx: GramlessContext) => any): this;
+  onSuccess(filterOrHandler: string | RegExp | ((ctx: GramlessContext, payment: any) => any), handler?: (ctx: GramlessContext, payment: any) => any): this;
+  refund(ctx: GramlessContext, params: { userId: number; chargeId: string }): Promise<boolean>;
+  middleware(): MiddlewareFunction;
+}
+
+export function createStarsEngine(options?: { currency?: string }): StarsEngine;
+
 export function createBot(options?: {
   api?: any;
   onError?: (err: Error, ctx: GramlessContext) => any;
 }): GramlessRouter;
 
 export default createBot;
+

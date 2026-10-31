@@ -33,6 +33,11 @@ export {
 } from './session.js';
 export { createFSM, FsmMachine } from './fsm.js';
 export { createEndpoint, v } from './endpoint.js';
+export { rateLimit, MemoryRateLimitStore, RateLimitKey } from './ratelimit.js';
+export { createI18n, I18nEngine } from './i18n.js';
+export { paginate, Menu } from './menu.js';
+export { createDeepLinkRouter, createDeepLink, decodeDeepLinkPayload } from './deeplink.js';
+export { createStarsEngine, StarsEngine } from './payments.js';
 
 /**
  * Creates a new Gramless bot application router.
