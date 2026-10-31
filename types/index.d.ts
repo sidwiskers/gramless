@@ -239,6 +239,22 @@ export const Filter: {
   textMatches(pattern: RegExp): FilterPredicate;
   fromUsers(...userIds: number[]): FilterPredicate;
   inChats(...chatIds: Array<number | string>): FilterPredicate;
+
+  // Shorthand aliases
+  text: FilterPredicate;
+  photo: FilterPredicate;
+  document: FilterPredicate;
+  audio: FilterPredicate;
+  voice: FilterPredicate;
+  video: FilterPredicate;
+  videoNote: FilterPredicate;
+  sticker: FilterPredicate;
+  animation: FilterPredicate;
+  location: FilterPredicate;
+  contact: FilterPredicate;
+  poll: FilterPredicate;
+  dice: FilterPredicate;
+  callback: FilterPredicate;
 };
 
 export interface SessionStore {

@@ -118,11 +118,11 @@ export class FsmMachine {
       }
 
       // Check cancellation trigger
-      if (this.cancelTrigger) {
-        const text = ctx.text;
+      if (this.cancelTrigger && (ctx.text || ctx.data)) {
+        const val = ctx.text || ctx.data;
         const isCancel = this.cancelTrigger instanceof RegExp
-          ? this.cancelTrigger.test(text)
-          : text.toLowerCase() === this.cancelTrigger.toLowerCase();
+          ? this.cancelTrigger.test(val)
+          : val.toLowerCase() === this.cancelTrigger.toLowerCase();
 
         if (isCancel) {
           ctx.fsm.complete();

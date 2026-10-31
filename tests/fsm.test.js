@@ -115,3 +115,74 @@ test('FSM: cancellation via /cancel command', async () => {
   const sessionCancelled = await store.get('chat_user:88:88');
   assert.equal(sessionCancelled._fsm, undefined);
 });
+
+test('FSM: non-text update handling (photo/media) without crashing cancelTrigger check', async () => {
+  const router = new GramlessRouter();
+  const store = new MemorySessionStore();
+  let photoHandled = false;
+
+  router.use(session({ store }));
+  const flow = createFSM({ cancelCommand: '/abort' });
+
+  flow.step('await_photo', async (ctx) => {
+    if (ctx.raw.photo) {
+      photoHandled = true;
+      ctx.fsm.complete();
+    }
+  });
+
+  router.use(flow.middleware());
+
+  router.command('upload', async (ctx) => {
+    ctx.fsm.goto('await_photo');
+  });
+
+  const user = { chat: { id: 99 }, from: { id: 99 } };
+
+  // 1. Enter step
+  await router.handle({ ...user, text: '/upload' });
+
+  // 2. Send photo (text is undefined/null)
+  await router.handle({ ...user, photo: [{ file_id: 'photo_123' }] });
+  assert.equal(photoHandled, true);
+});
+
+test('FSM: cancellation via inline callback query button', async () => {
+  const router = new GramlessRouter();
+  const store = new MemorySessionStore();
+  const responses = [];
+
+  const mockApi = {
+    async sendMessage(params) {
+      responses.push(params.text);
+      return { message_id: 1, ...params };
+    },
+  };
+
+  router.use(session({ store }));
+  const flow = createFSM();
+  flow.onCancel('cancel_flow', async (ctx) => {
+    responses.push('Flow aborted via button');
+  });
+
+  flow.step('active_step', async (ctx) => {
+    // waiting
+  });
+
+  router.use(flow.middleware());
+
+  router.command('start', async (ctx) => {
+    ctx.fsm.goto('active_step');
+  });
+
+  const user = { chat: { id: 105 }, from: { id: 105 } };
+  await router.handle({ ...user, text: '/start' }, {}, mockApi);
+
+  // User presses Cancel inline button: callback query with data 'cancel_flow'
+  await router.handle({ ...user, data: 'cancel_flow' }, {}, mockApi);
+
+  assert.equal(responses[0], 'Flow aborted via button');
+  const finalSession = await store.get('chat_user:105:105');
+  assert.equal(finalSession._fsm, undefined);
+});
+

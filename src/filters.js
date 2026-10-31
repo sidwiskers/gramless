@@ -145,7 +145,7 @@ export const Filter = {
    * @returns {Function}
    */
   textPrefix(prefix) {
-    return (ctx) => ctx.text.startsWith(prefix);
+    return (ctx) => Boolean(ctx.text && ctx.text.startsWith(prefix));
   },
 
   /**
@@ -154,7 +154,7 @@ export const Filter = {
    * @returns {Function}
    */
   textMatches(pattern) {
-    return (ctx) => pattern.test(ctx.text);
+    return (ctx) => Boolean(ctx.text && pattern.test(ctx.text));
   },
 
   /**
@@ -177,3 +177,20 @@ export const Filter = {
     return (ctx) => ctx.chatId !== null && ids.has(ctx.chatId);
   },
 };
+
+// Ergonomic shorthand aliases
+Filter.text = Filter.hasText;
+Filter.photo = Filter.hasPhoto;
+Filter.document = Filter.hasDocument;
+Filter.audio = Filter.hasAudio;
+Filter.voice = Filter.hasVoice;
+Filter.video = Filter.hasVideo;
+Filter.videoNote = Filter.hasVideoNote;
+Filter.sticker = Filter.hasSticker;
+Filter.animation = Filter.hasAnimation;
+Filter.location = Filter.hasLocation;
+Filter.contact = Filter.hasContact;
+Filter.poll = Filter.hasPoll;
+Filter.dice = Filter.hasDice;
+Filter.callback = Filter.isCallback;
+

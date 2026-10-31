@@ -89,3 +89,28 @@ test('Filters: router.on(filter, handler) integration', async () => {
 
   assert.deepEqual(matched, ['#release Announcement']);
 });
+
+test('Filters: aliases and null safety for parameterized filters', () => {
+  const nullTextCtx = {
+    chat: { id: 10 },
+    text: null,
+    isPrivate: false,
+    isGroup: true,
+    isChannel: false,
+    raw: { photo: [{ file_id: 'ph' }] },
+    message: { photo: [{ file_id: 'ph' }] },
+    data: null,
+  };
+
+  // Test aliases
+  assert.equal(Filter.text(nullTextCtx), false);
+  assert.equal(Filter.photo(nullTextCtx), true);
+
+  // Test null safety (does not throw when text is null)
+  const prefixFilter = Filter.textPrefix('/cmd');
+  const regexFilter = Filter.textMatches(/^\d+$/);
+
+  assert.equal(prefixFilter(nullTextCtx), false);
+  assert.equal(regexFilter(nullTextCtx), false);
+});
+

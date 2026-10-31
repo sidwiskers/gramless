@@ -525,7 +525,7 @@ export class GramlessContext {
   // --- Callback Query Responses ---
 
   async answer(text = '', options = {}) {
-    const queryId = this.raw.id;
+    const queryId = this.raw.id || this.update?.callback_query?.id;
     if (!queryId) return null;
     let textStr = text;
     let opts = options;
@@ -552,7 +552,7 @@ export class GramlessContext {
   }
 
   async ephemeral(text, options = {}) {
-    if (this.raw.id && !options.sendPrivateMessage) {
+    if ((this.raw.id || this.update?.callback_query?.id) && !options.sendPrivateMessage) {
       return this.alert(text);
     }
     return this.reply(text, { chat_id: this.userId, ...options });
