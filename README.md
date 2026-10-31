@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-41%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -97,10 +97,15 @@ gramless/
 │   ├── session.js        # Transactional SQLite session engine with rollback
 │   ├── fsm.js            # Finite State Machine / conversation scenes
 │   ├── endpoint.js       # Mini App RPC bridge with zero-dependency schema validation
+│   ├── ratelimit.js      # Sliding-window anti-spam & flood wait control
+│   ├── i18n.js           # Multi-language localization & pluralization
+│   ├── menu.js           # Interactive menus & pagination engine
+│   ├── deeplink.js       # Deep link parsing & referral tracking
+│   ├── payments.js       # Telegram Stars (XTR) payments engine
 │   └── testkit/          # Gramless Lab: deterministic offline test harness
 ├── types/
 │   └── index.d.ts        # Comprehensive TypeScript definitions
-└── tests/                # 38 unit, integration, and benchmark tests
+└── tests/                # 60 unit, integration, and benchmark tests
 ```
 
 ---
@@ -346,6 +351,92 @@ test('Settings Flow Test', async () => {
   const res2 = await alice.click('btn_profile');
   res2.want(Answered());
   res2.want(Edited('User Profile: Alice'));
+});
+```
+
+---
+
+## 8. Optional Extension Modules
+
+Gramless provides zero-dependency, tree-shakable subpath modules for common production requirements:
+
+### Anti-Spam Rate Limiting (`gramless/ratelimit`)
+```javascript
+import { rateLimit } from 'gramless/ratelimit';
+
+// Protect bot against spam (max 5 commands per 10s per user)
+bot.use(rateLimit({
+  limit: 5,
+  window: '10s',
+  skip: (ctx) => ctx.userId === ADMIN_ID,
+}));
+```
+
+### Multi-Language Localization & Pluralization (`gramless/i18n`)
+```javascript
+import { createI18n } from 'gramless/i18n';
+
+const i18n = createI18n({
+  defaultLocale: 'en',
+  locales: {
+    en: { welcome: 'Welcome, {name}!', stars: '{count} star | {count} stars' },
+    es: { welcome: '¡Bienvenido, {name}!', stars: '{count} estrella | {count} estrellas' },
+  },
+});
+bot.use(i18n.middleware());
+
+bot.command('start', async (ctx) => {
+  await ctx.reply(ctx.t('welcome', { name: ctx.from.first_name }));
+});
+```
+
+### Paginated Lists & Interactive Menus (`gramless/menu`)
+```javascript
+import { paginate, Menu } from 'gramless/menu';
+
+bot.command('catalog', async (ctx) => {
+  const items = await fetchCatalog();
+  await paginate(ctx, {
+    items,
+    pageSize: 5,
+    formatItem: (item, idx) => `📦 <b>${item.name}</b> — $${item.price}`,
+    callbackPrefix: 'catalog:p:',
+  });
+});
+```
+
+### Deep Linking & Referral Tracking (`gramless/deeplink`)
+```javascript
+import { createDeepLinkRouter } from 'gramless/deeplink';
+
+const dl = createDeepLinkRouter();
+// Handles t.me/MyBot?start=ref_12345
+dl.on('ref_:referrerId', async (ctx) => {
+  await rewardReferral(ctx.params.referrerId, ctx.userId);
+  await ctx.reply(`Welcome! You joined via referral code ${ctx.params.referrerId}.`);
+});
+bot.use(dl.middleware());
+```
+
+### Telegram Stars (`XTR`) Digital Goods (`gramless/payments`)
+```javascript
+import { createStarsEngine } from 'gramless/payments';
+
+const stars = createStarsEngine();
+bot.use(stars.middleware());
+
+bot.command('buy_vip', async (ctx) => {
+  await stars.sendInvoice(ctx, {
+    title: 'VIP Pass',
+    description: '30-day VIP membership',
+    stars: 150,
+    payload: `vip_${ctx.userId}`,
+  });
+});
+
+stars.onPreCheckout(async (ctx) => true);
+stars.onSuccess('vip_:id', async (ctx, payment) => {
+  await ctx.reply(`🎉 Payment received! ${payment.total_amount} Stars.`);
 });
 ```
 
