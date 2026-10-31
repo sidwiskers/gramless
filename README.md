@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-60%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -102,10 +102,14 @@ gramless/
 │   ├── menu.js           # Interactive menus & pagination engine
 │   ├── deeplink.js       # Deep link parsing & referral tracking
 │   ├── payments.js       # Telegram Stars (XTR) payments engine
+│   ├── media_group.js    # Album / multi-photo debounce aggregator
+│   ├── auto_retry.js     # Telegram 429 flood wait auto-retry interceptor
+│   ├── stateless_question.js # Zero-state force_reply prompts
+│   ├── cleaner.js        # Message cleaner & temp notice purger
 │   └── testkit/          # Gramless Lab: deterministic offline test harness
 ├── types/
 │   └── index.d.ts        # Comprehensive TypeScript definitions
-└── tests/                # 60 unit, integration, and benchmark tests
+└── tests/                # 70 unit, integration, and benchmark tests
 ```
 
 ---
@@ -437,6 +441,62 @@ bot.command('buy_vip', async (ctx) => {
 stars.onPreCheckout(async (ctx) => true);
 stars.onSuccess('vip_:id', async (ctx, payment) => {
   await ctx.reply(`🎉 Payment received! ${payment.total_amount} Stars.`);
+});
+```
+
+### Media Group / Album Aggregator (`gramless/media-group`)
+```javascript
+import { mediaGroup } from 'gramless/media-group';
+
+// Debounces rapid multi-photo album updates into a single execution
+bot.use(mediaGroup({ timeout: 100 }));
+
+bot.on('photo', async (ctx) => {
+  if (ctx.mediaGroup) {
+    await ctx.reply(`Received album with ${ctx.mediaGroup.length} items!`);
+  } else {
+    await ctx.reply('Received single photo.');
+  }
+});
+```
+
+### Auto-Retry on Telegram 429 Flood Wait (`gramless/auto-retry`)
+```javascript
+import { autoRetry } from 'gramless/auto-retry';
+
+// Transparently sleeps and retries when Telegram responds with 429 Too Many Requests
+bot.use(autoRetry({ maxRetries: 3, maxDelay: 30000 }));
+```
+
+### Stateless ForceReply Questions (`gramless/stateless-question`)
+```javascript
+import { createStatelessQuestion } from 'gramless/stateless-question';
+
+const emailPrompt = createStatelessQuestion('ask_email', async (ctx) => {
+  await ctx.reply(`Saved your email: ${ctx.text}`);
+});
+bot.use(emailPrompt.middleware());
+
+bot.command('login', async (ctx) => {
+  // Uses invisible zero-width unicode tagging; question looks clean to user
+  await emailPrompt.reply(ctx, 'Please enter your email:');
+});
+```
+
+### Message Cleaner & Temp Notice Purger (`gramless/cleaner`)
+```javascript
+import { cleaner } from 'gramless/cleaner';
+
+bot.use(cleaner({ autoCleanOnCommand: true }));
+
+bot.command('search', async (ctx) => {
+  // replyTemp marks message for deletion
+  await ctx.replyTemp('🔍 Searching database...');
+  const results = await fetchResults();
+  
+  // Clean temporary notices and send final result
+  await ctx.cleanTracked();
+  await ctx.reply(`Found ${results.length} results!`);
 });
 ```
 

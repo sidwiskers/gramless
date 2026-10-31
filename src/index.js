@@ -38,6 +38,10 @@ export { createI18n, I18nEngine } from './i18n.js';
 export { paginate, Menu } from './menu.js';
 export { createDeepLinkRouter, createDeepLink, decodeDeepLinkPayload } from './deeplink.js';
 export { createStarsEngine, StarsEngine } from './payments.js';
+export { mediaGroup, MediaGroupAggregator } from './media_group.js';
+export { autoRetry, wrapApi, executeWithRetry } from './auto_retry.js';
+export { createStatelessQuestion, StatelessQuestion } from './stateless_question.js';
+export { cleaner, createCleaner, MessageCleaner } from './cleaner.js';
 
 /**
  * Creates a new Gramless bot application router.

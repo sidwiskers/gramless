@@ -100,6 +100,13 @@ export class GramlessContext {
   rateLimit?: { limit: number; remaining: number; resetMs: number };
   deepLink?: { payload: string; decoded: string; params: Record<string, string>; match: any };
   payment?: Record<string, any>;
+  mediaGroup?: any[];
+  mediaGroupContexts?: GramlessContext[];
+  questionTag?: string;
+  cleaner?: { track(msg: any): void; clean(): Promise<number> };
+  trackTemp?(msg: any): void;
+  cleanTracked?(): Promise<number>;
+  replyTemp?(text: string, options?: Record<string, any>): Promise<any>;
 
   readonly message: Record<string, any> | null;
   readonly chatId: number | string | null;
@@ -426,6 +433,48 @@ export class StarsEngine {
 }
 
 export function createStarsEngine(options?: { currency?: string }): StarsEngine;
+
+// --- Media Group Aggregator ---
+export class MediaGroupAggregator {
+  constructor(options?: { timeout?: number });
+  middleware(): MiddlewareFunction;
+}
+
+export function mediaGroup(options?: { timeout?: number }): MiddlewareFunction;
+
+// --- Auto-Retry ---
+export function executeWithRetry<T>(
+  callFn: () => Promise<T>,
+  options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }
+): Promise<T>;
+
+export function wrapApi(api: any, options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }): any;
+
+export function autoRetry(options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }): MiddlewareFunction;
+
+// --- Stateless Question ---
+export function wrapQuestionText(tag: string, text: string): string;
+export function extractQuestionTag(text?: string): string | null;
+
+export class StatelessQuestion {
+  tag: string;
+  handler: (ctx: GramlessContext) => any;
+  constructor(tag: string, handler: (ctx: GramlessContext) => any);
+  reply(ctx: GramlessContext, text: string, options?: Record<string, any>): Promise<any>;
+  middleware(): MiddlewareFunction;
+}
+
+export function createStatelessQuestion(tag: string, handler: (ctx: GramlessContext) => any): StatelessQuestion;
+
+// --- Cleaner ---
+export class MessageCleaner {
+  track(chatId: string | number, messageIdOrObject: number | Record<string, any>): void;
+  clean(ctx: GramlessContext): Promise<number>;
+  middleware(options?: { autoCleanOnCommand?: boolean }): MiddlewareFunction;
+}
+
+export function createCleaner(options?: any): MessageCleaner;
+export function cleaner(options?: { autoCleanOnCommand?: boolean }): MiddlewareFunction;
 
 export function createBot(options?: {
   api?: any;
