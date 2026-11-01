@@ -60,7 +60,42 @@ export class ApiError extends GramlessError {
   parameters: Record<string, unknown>;
   readonly retryAfter: number | null;
   readonly migrateToChatId: number | null;
+
+  readonly category:
+    | 'BLOCKED_BY_USER'
+    | 'USER_DEACTIVATED'
+    | 'CHAT_NOT_FOUND'
+    | 'KICKED_FROM_CHAT'
+    | 'NOT_MEMBER'
+    | 'PERMISSION_DENIED'
+    | 'MESSAGE_NOT_MODIFIED'
+    | 'MESSAGE_NOT_FOUND'
+    | 'REPLY_NOT_FOUND'
+    | 'QUERY_TOO_OLD'
+    | 'RATE_LIMITED'
+    | 'TOPIC_CLOSED'
+    | 'MEDIA_RESTRICTED'
+    | 'UNKNOWN';
+
+  readonly isBlockedByUser: boolean;
+  readonly isUserDeactivated: boolean;
+  readonly isChatNotFound: boolean;
+  readonly isKickedFromChat: boolean;
+  readonly isNotMember: boolean;
+  readonly isPermissionDenied: boolean;
+  readonly isNotModified: boolean;
+  readonly isMessageNotFound: boolean;
+  readonly isReplyNotFound: boolean;
+  readonly isQueryTooOld: boolean;
+  readonly isRateLimited: boolean;
+  readonly isTopicClosed: boolean;
+  readonly isMediaRestricted: boolean;
 }
+
+export function isBlockedError(err: unknown): boolean;
+export function isNotModifiedError(err: unknown): boolean;
+export function isPermissionError(err: unknown): boolean;
+export function isNotFoundError(err: unknown): boolean;
 
 export class ValidationError extends GramlessError {
   issues: Array<{ field: string; message: string }>;
@@ -531,9 +566,13 @@ export function initDataAuth(
 ): MiddlewareFunction;
 
 // --- Proactive Per-Chat Flood Control Pacer ---
+export function isGroupChatId(chatId: string | number | null | undefined): boolean;
+
 export class ChatPacer {
   constructor(options?: {
     minChatIntervalMs?: number;
+    minPrivateChatIntervalMs?: number;
+    minGroupChatIntervalMs?: number;
     globalLimitPerSec?: number;
     methods?: Set<string> | string[];
   });
@@ -543,11 +582,23 @@ export class ChatPacer {
 
 export function wrapPacer(
   api: any,
-  options?: { minChatIntervalMs?: number; globalLimitPerSec?: number; methods?: Set<string> | string[] }
+  options?: {
+    minChatIntervalMs?: number;
+    minPrivateChatIntervalMs?: number;
+    minGroupChatIntervalMs?: number;
+    globalLimitPerSec?: number;
+    methods?: Set<string> | string[];
+  }
 ): any;
 
 export function pacer(
-  options?: { minChatIntervalMs?: number; globalLimitPerSec?: number; methods?: Set<string> | string[] }
+  options?: {
+    minChatIntervalMs?: number;
+    minPrivateChatIntervalMs?: number;
+    minGroupChatIntervalMs?: number;
+    globalLimitPerSec?: number;
+    methods?: Set<string> | string[];
+  }
 ): MiddlewareFunction;
 
 export function createBot(options?: {

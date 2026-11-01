@@ -76,6 +76,130 @@ export class ApiError extends GramlessError {
       ? this.parameters.migrate_to_chat_id
       : null;
   }
+
+  /**
+   * Primary error category enum.
+   * @returns {string}
+   */
+  get category() {
+    if (this.isBlockedByUser) return 'BLOCKED_BY_USER';
+    if (this.isUserDeactivated) return 'USER_DEACTIVATED';
+    if (this.isChatNotFound) return 'CHAT_NOT_FOUND';
+    if (this.isKickedFromChat) return 'KICKED_FROM_CHAT';
+    if (this.isNotMember) return 'NOT_MEMBER';
+    if (this.isPermissionDenied) return 'PERMISSION_DENIED';
+    if (this.isNotModified) return 'MESSAGE_NOT_MODIFIED';
+    if (this.isReplyNotFound) return 'REPLY_NOT_FOUND';
+    if (this.isMessageNotFound) return 'MESSAGE_NOT_FOUND';
+    if (this.isQueryTooOld) return 'QUERY_TOO_OLD';
+    if (this.isRateLimited) return 'RATE_LIMITED';
+    if (this.isTopicClosed) return 'TOPIC_CLOSED';
+    if (this.isMediaRestricted) return 'MEDIA_RESTRICTED';
+    return 'UNKNOWN';
+  }
+
+  /** True if the target user has blocked the bot */
+  get isBlockedByUser() {
+    return this.errorCode === 403 && /bot was blocked by the user/i.test(this.description);
+  }
+
+  /** True if the target user account has been deactivated or deleted */
+  get isUserDeactivated() {
+    return this.errorCode === 403 && /user is deactivated/i.test(this.description);
+  }
+
+  /** True if the target chat ID does not exist or bot has never interacted with it */
+  get isChatNotFound() {
+    return this.errorCode === 400 && /chat not found/i.test(this.description);
+  }
+
+  /** True if the bot was kicked/banned from the group, supergroup, or channel */
+  get isKickedFromChat() {
+    return this.errorCode === 403 && /bot was kicked/i.test(this.description);
+  }
+
+  /** True if the bot is not a member of the chat */
+  get isNotMember() {
+    return this.errorCode === 403 && /bot is not a member/i.test(this.description);
+  }
+
+  /** True if the bot lacks required permissions (e.g. admin rights, send messages, pin, restrict) */
+  get isPermissionDenied() {
+    return /not enough rights|have no rights|CHAT_ADMIN_REQUIRED|need administrator rights|can't send messages/i.test(this.description);
+  }
+
+  /** True if edit was rejected because the message content and markup are unchanged */
+  get isNotModified() {
+    return this.errorCode === 400 && /message is not modified/i.test(this.description);
+  }
+
+  /** True if the message being replied to was deleted */
+  get isReplyNotFound() {
+    return this.errorCode === 400 && /reply message not found/i.test(this.description);
+  }
+
+  /** True if the target message to edit, delete, or pin was not found or already deleted */
+  get isMessageNotFound() {
+    return this.errorCode === 400 && !this.isReplyNotFound && /message to (?:edit|delete) not found|message can't be deleted|message not found/i.test(this.description);
+  }
+
+  /** True if an inline callback query expired before being answered */
+  get isQueryTooOld() {
+    return this.errorCode === 400 && /query is too old/i.test(this.description);
+  }
+
+  /** True if the request was throttled by Telegram rate limits (429) */
+  get isRateLimited() {
+    return this.errorCode === 429 || typeof this.parameters?.retry_after === 'number';
+  }
+
+  /** True if sending to a forum topic that was closed, hidden, or deleted */
+  get isTopicClosed() {
+    return /message thread not found|TOPIC_CLOSED|TOPIC_DELETED/i.test(this.description);
+  }
+
+  /** True if media upload failed due to size, format, or chat media restrictions */
+  get isMediaRestricted() {
+    return /wrong file identifier|file is too big|can't parse entities|photo|media|document/i.test(this.description) && (this.errorCode === 400 || this.errorCode === 403);
+  }
+}
+
+/**
+ * Checks if an error was caused by a user blocking the bot or deleting their account.
+ * Useful for purging inactive users during broadcast campaigns.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isBlockedError(err) {
+  return err instanceof ApiError ? (err.isBlockedByUser || err.isUserDeactivated) : false;
+}
+
+/**
+ * Checks if an error was caused by editing a message with identical content.
+ * Safe to ignore in 99% of UI button interactions.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isNotModifiedError(err) {
+  return err instanceof ApiError ? err.isNotModified : false;
+}
+
+/**
+ * Checks if an error was caused by permission restriction, kicking, or lack of admin rights.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isPermissionError(err) {
+  return err instanceof ApiError ? (err.isPermissionDenied || err.isKickedFromChat || err.isNotMember) : false;
+}
+
+/**
+ * Checks if an error was caused by a missing chat or missing message.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isNotFoundError(err) {
+  return err instanceof ApiError ? (err.isChatNotFound || err.isMessageNotFound || err.isReplyNotFound) : false;
 }
 
 /**

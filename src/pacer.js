@@ -78,17 +78,32 @@ class GlobalTokenBucket {
 }
 
 /**
+ * Helper to determine if a chat ID belongs to a group, supergroup, or channel.
+ * In Telegram Bot API, all groups and channels have negative chat IDs.
+ * @param {string|number|null|undefined} chatId
+ * @returns {boolean}
+ */
+export function isGroupChatId(chatId) {
+  if (typeof chatId === 'number') return chatId < 0;
+  if (typeof chatId === 'string') return chatId.trim().startsWith('-');
+  return false;
+}
+
+/**
  * Pacer engine managing per-chat queues and global dispatch limits.
  */
 export class ChatPacer {
   /**
    * @param {Object} [options={}]
-   * @param {number} [options.minChatIntervalMs=1000] Minimum spacing between messages to the same chat
+   * @param {number} [options.minChatIntervalMs=1000] General minimum spacing fallback
+   * @param {number} [options.minPrivateChatIntervalMs=1000] Minimum spacing for private chats (1 msg/sec)
+   * @param {number} [options.minGroupChatIntervalMs=3000] Minimum spacing for groups (20 msgs/min = 3,000ms)
    * @param {number} [options.globalLimitPerSec=30] Maximum total messages across all chats per second
    * @param {Set<string>|Array<string>} [options.methods] Methods subject to pacing
    */
   constructor(options = {}) {
-    this.minChatIntervalMs = options.minChatIntervalMs ?? 1000;
+    this.minPrivateChatIntervalMs = options.minPrivateChatIntervalMs ?? options.minChatIntervalMs ?? 1000;
+    this.minGroupChatIntervalMs = options.minGroupChatIntervalMs ?? 3000;
     this.globalTokenBucket = new GlobalTokenBucket(options.globalLimitPerSec ?? 30);
     this.pacedMethods = options.methods
       ? new Set(options.methods)
@@ -125,10 +140,12 @@ export class ChatPacer {
     return new Promise((resolve, reject) => {
       chatEntry.queue.push(async () => {
         try {
-          // 1. Calculate per-chat required wait
+          // 1. Calculate per-chat required wait (1s for private, 3s for groups / 20 msgs/min)
           const now = Date.now();
+          const isGroup = isGroupChatId(chatId);
+          const minInterval = isGroup ? this.minGroupChatIntervalMs : this.minPrivateChatIntervalMs;
           const chatElapsed = now - chatEntry.lastDispatch;
-          const chatDelay = Math.max(0, this.minChatIntervalMs - chatElapsed);
+          const chatDelay = Math.max(0, minInterval - chatElapsed);
 
           // 2. Calculate global bucket required wait
           const globalDelay = this.globalTokenBucket.acquireDelay();
@@ -233,4 +250,5 @@ export default {
   ChatPacer,
   wrapPacer,
   pacer,
+  isGroupChatId,
 };

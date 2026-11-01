@@ -24,6 +24,10 @@ export {
   SessionError,
   PanicError,
   sanitizeString,
+  isBlockedError,
+  isNotModifiedError,
+  isPermissionError,
+  isNotFoundError,
 } from './errors.js';
 export {
   session,

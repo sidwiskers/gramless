@@ -1,8 +1,54 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { ChatPacer, wrapPacer, pacer } from '../src/pacer.js';
+import { ChatPacer, wrapPacer, pacer, isGroupChatId } from '../src/pacer.js';
 
 describe('gramless/pacer: Proactive Per-Chat Flood Control', () => {
+  it('correctly identifies group and supergroup chat IDs', () => {
+    assert.equal(isGroupChatId(-1001234567890), true);
+    assert.equal(isGroupChatId(-54321), true);
+    assert.equal(isGroupChatId('-100999888'), true);
+    assert.equal(isGroupChatId(123456789), false);
+    assert.equal(isGroupChatId('123456789'), false);
+    assert.equal(isGroupChatId(null), false);
+    assert.equal(isGroupChatId(undefined), false);
+  });
+
+  it('applies separate pacing intervals for private vs group chats (20 msgs/min)', async () => {
+    // 30ms for private, 70ms for groups
+    const pacerEngine = new ChatPacer({
+      minPrivateChatIntervalMs: 30,
+      minGroupChatIntervalMs: 70,
+    });
+    const groupTimes = [];
+    const privateTimes = [];
+
+    const mockApi = {
+      call: async (method, params) => {
+        if (params.chat_id < 0) {
+          groupTimes.push(Date.now());
+        } else {
+          privateTimes.push(Date.now());
+        }
+        return { ok: true };
+      },
+    };
+
+    const pacedApi = pacerEngine.wrapApi(mockApi);
+
+    // 2 calls to group chat (-100), 2 calls to private chat (123)
+    await Promise.all([
+      pacedApi.call('sendMessage', { chat_id: -100, text: 'Group 1' }),
+      pacedApi.call('sendMessage', { chat_id: -100, text: 'Group 2' }),
+      pacedApi.call('sendMessage', { chat_id: 123, text: 'Private 1' }),
+      pacedApi.call('sendMessage', { chat_id: 123, text: 'Private 2' }),
+    ]);
+
+    const groupDelta = groupTimes[1] - groupTimes[0];
+    const privateDelta = privateTimes[1] - privateTimes[0];
+
+    assert.ok(groupDelta >= 60, `Expected groupDelta >= 60ms, got ${groupDelta}ms`);
+    assert.ok(privateDelta >= 25, `Expected privateDelta >= 25ms, got ${privateDelta}ms`);
+  });
   it('spaces successive calls to the same chat by minChatIntervalMs', async () => {
     // Use 50ms interval for fast deterministic unit testing
     const pacerEngine = new ChatPacer({ minChatIntervalMs: 50 });
