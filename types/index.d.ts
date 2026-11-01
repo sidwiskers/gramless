@@ -244,6 +244,8 @@ export type FilterPredicate = (ctx: GramlessContext) => Promise<boolean> | boole
 
 export class GramlessRouter {
   constructor(options?: {
+    token?: string;
+    botToken?: string;
     filter?: FilterPredicate;
     api?: any;
     onError?: (err: Error, ctx: GramlessContext) => any;
@@ -261,18 +263,43 @@ export class GramlessRouter {
   handle(input: any, ctx?: any, api?: any): Promise<boolean>;
   handler(): (input: any, ctx: any) => Promise<any>;
   fetch(options?: {
+    token?: string;
     secretToken?: string;
     webhookReply?: boolean;
     background?: boolean;
     onError?: (err: Error, request: any) => any;
   }): (request: any, env?: any, ctx?: any) => Promise<any>;
   webhook(options?: {
+    token?: string;
     secretToken?: string;
     webhookReply?: boolean;
     background?: boolean;
     onError?: (err: Error, request: any) => any;
   }): (request: any, env?: any, ctx?: any) => Promise<any>;
+  start(options?: {
+    timeout?: number;
+    limit?: number;
+    offset?: number;
+    allowedUpdates?: string[];
+    dropPendingUpdates?: boolean;
+    onStart?: () => void;
+    onError?: (err: Error) => void;
+    signal?: AbortSignal;
+  }): Promise<void>;
+  stop(): void;
+  webhookCallback(options?: {
+    secretToken?: string;
+    onError?: (err: Error, req?: any, res?: any) => any;
+  }): (req: any, res: any) => Promise<void>;
 }
+
+export function webhookCallback(
+  bot: GramlessRouter,
+  options?: {
+    secretToken?: string;
+    onError?: (err: Error, req?: any, res?: any) => any;
+  }
+): (req: any, res: any) => Promise<void>;
 
 export const Filter: {
   all(...predicates: FilterPredicate[]): FilterPredicate;

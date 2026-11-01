@@ -72,6 +72,7 @@ export {
  * Creates a new Gramless bot application router.
  * 
  * @param {Object} [options={}]
+ * @param {string} [options.token] Telegram bot token (auto-initializes standard zero-dependency API client)
  * @param {Record<string, any>} [options.api] Optional API client injection
  * @param {Function} [options.onError] Global unhandled error hook
  * @returns {GramlessRouter}
@@ -80,4 +81,16 @@ export function createBot(options = {}) {
   return new GramlessRouter(options);
 }
 
+/**
+ * Standard Node.js / Express / Fastify / Connect webhook callback adapter.
+ * 
+ * @param {GramlessRouter} bot
+ * @param {Object} [options={}]
+ * @returns {Function}
+ */
+export function webhookCallback(bot, options = {}) {
+  return bot.webhookCallback(options);
+}
+
 export default createBot;
+

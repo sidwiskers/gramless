@@ -6,7 +6,33 @@
  */
 
 import { GramlessContext } from './context.js';
-import { RoutingError, PanicError } from './errors.js';
+import { RoutingError, PanicError, ApiError } from './errors.js';
+
+/**
+ * Creates a zero-dependency Telegram Bot API client using standard globalThis.fetch.
+ * @param {string} token
+ * @returns {{ call: (method: string, params?: Record<string, any>) => Promise<any> }}
+ */
+export function createDefaultApiClient(token) {
+  return {
+    call: async (method, params = {}, options = {}) => {
+      const fetchOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      };
+      if (options.signal) {
+        fetchOptions.signal = options.signal;
+      }
+      const res = await globalThis.fetch(`https://api.telegram.org/bot${token}/${method}`, fetchOptions);
+      const data = await res.json();
+      if (!data.ok) {
+        throw new ApiError(data.description || 'Telegram API Error', data.error_code, data.parameters);
+      }
+      return data.result;
+    },
+  };
+}
 
 /**
  * Composes an array of middleware functions into a single executable pipeline.
@@ -78,14 +104,17 @@ export class GramlessRouter {
   /**
    * @param {Object} [options={}]
    * @param {Function} [options.filter] Guard filter for this entire router or sub-group
-   * @param {Record<string, any>} [options.api] Optional API client injection
+   * @param {string} [options.token] Bot API token (automatically creates zero-dependency fetch API client)
+   * @param {string} [options.botToken] Alias for options.token
+   * @param {Record<string, any>} [options.api] Optional custom API client injection
    * @param {Function} [options.onError] Global error handler hook
    */
   constructor(options = {}) {
     this.filter = options.filter || null;
-    this.api = options.api || null;
     this.onError = options.onError || null;
     this.username = (options.username || options.botUsername || '').replace(/^@/, '');
+    this.token = options.token || options.botToken || null;
+    this.api = options.api || (this.token ? createDefaultApiClient(this.token) : null);
 
     /** @type {Array<Function>} */
     this.middlewares = [];
@@ -548,25 +577,9 @@ export class GramlessRouter {
 
       // 4. API resolution
       let effectiveApi = this.api;
-      if (!effectiveApi && env?.BOT_TOKEN) {
-        const botToken = env.BOT_TOKEN;
-        effectiveApi = {
-          call: async (method, params = {}) => {
-            const res = await globalThis.fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(params),
-            });
-            const data = await res.json();
-            if (!data.ok) {
-              const err = new Error(data.description || 'Telegram API Error');
-              err.errorCode = data.error_code;
-              err.parameters = data.parameters;
-              throw err;
-            }
-            return data.result;
-          },
-        };
+      if (!effectiveApi && (env?.BOT_TOKEN || options.token)) {
+        const botToken = env?.BOT_TOKEN || options.token;
+        effectiveApi = createDefaultApiClient(botToken);
       }
 
       // 5. Webhook Reply Interceptor
@@ -641,6 +654,195 @@ export class GramlessRouter {
    */
   webhook(options = {}) {
     return this.fetch(options);
+  }
+
+  /**
+   * Starts long-polling for updates. Ideal for local development, VPS, and traditional servers.
+   * 
+   * @param {Object} [options={}]
+   * @param {number} [options.timeout=30] Timeout in seconds for long polling
+   * @param {number} [options.limit=100] Limits the number of updates to be retrieved (1-100)
+   * @param {string[]} [options.allowedUpdates] Array of update types to receive
+   * @param {boolean} [options.dropPendingUpdates=false] Drop pending updates before starting
+   * @param {Function} [options.onStart] Callback when polling begins
+   * @param {Function} [options.onError] Error handler during polling
+   * @param {AbortSignal} [options.signal] AbortSignal to stop polling
+   * @returns {Promise<void>}
+   */
+  async start(options = {}) {
+    if (!this.api) {
+      throw new RoutingError('Cannot start long polling: bot token or api client was not provided.');
+    }
+
+    const timeout = options.timeout ?? 30;
+    const limit = options.limit ?? 100;
+    const allowedUpdates = options.allowedUpdates;
+    let offset = options.offset ?? 0;
+
+    this._polling = true;
+    this._pollingController = new AbortController();
+
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => this.stop(), { once: true });
+    }
+
+    if (options.dropPendingUpdates) {
+      try {
+        await this.api.call('deleteWebhook', { drop_pending_updates: true });
+      } catch {
+        // Ignore if webhook was not set
+      }
+    }
+
+    if (typeof options.onStart === 'function') {
+      options.onStart();
+    }
+
+    while (this._polling) {
+      try {
+        const params = {
+          offset,
+          timeout,
+          limit,
+        };
+        if (allowedUpdates) params.allowed_updates = allowedUpdates;
+
+        const updates = await this.api.call('getUpdates', params, {
+          signal: this._pollingController.signal,
+        });
+
+        if (Array.isArray(updates)) {
+          for (const update of updates) {
+            if (!this._polling) break;
+            offset = update.update_id + 1;
+            await this.handle(update, {}, this.api).catch((err) => {
+              if (this.onError) this.onError(err);
+            });
+          }
+        }
+
+        // Cooperative yield to event loop
+        await new Promise((resolve) => typeof setImmediate !== 'undefined' ? setImmediate(resolve) : setTimeout(resolve, 1));
+      } catch (err) {
+        if (!this._polling || err.name === 'AbortError' || this._pollingController?.signal.aborted) {
+          break;
+        }
+        if (typeof options.onError === 'function') {
+          options.onError(err);
+        } else if (this.onError) {
+          this.onError(err);
+        }
+        // Graceful backoff on network errors before retrying
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    }
+  }
+
+  /**
+   * Stops the long-polling loop.
+   */
+  stop() {
+    this._polling = false;
+    if (this._pollingController) {
+      this._pollingController.abort();
+    }
+  }
+
+  /**
+   * Returns a standard Node.js HTTP / Express / Fastify / Connect webhook middleware.
+   * Compatible with:
+   * - Express: app.use('/webhook', bot.webhookCallback({ secretToken }))
+   * - Fastify: fastify.post('/webhook', bot.webhookCallback({ secretToken }))
+   * - Node http: http.createServer(bot.webhookCallback({ secretToken })).listen(3000)
+   * 
+   * @param {Object} [options={}]
+   * @param {string} [options.secretToken] Optional secret token to verify in header
+   * @param {Function} [options.onError] Error handler override
+   * @returns {(req: any, res: any) => Promise<void>}
+   */
+  webhookCallback(options = {}) {
+    const secretToken = options.secretToken || null;
+
+    return async (req, res) => {
+      // 1. Method verification if available
+      if (req.method && req.method !== 'POST') {
+        if (res.status && typeof res.status === 'function') {
+          return res.status(405).send('Method Not Allowed');
+        } else if (res.writeHead) {
+          res.writeHead(405, { 'Content-Type': 'text/plain' });
+          return res.end('Method Not Allowed');
+        }
+      }
+
+      // 2. Secret token verification
+      if (secretToken) {
+        const headerToken = (req.headers && req.headers['x-telegram-bot-api-secret-token']) || '';
+        if (!timingSafeEqual(headerToken, secretToken)) {
+          if (res.status && typeof res.status === 'function') {
+            return res.status(401).send('Unauthorized: Invalid secret token');
+          } else if (res.writeHead) {
+            res.writeHead(401, { 'Content-Type': 'text/plain' });
+            return res.end('Unauthorized: Invalid secret token');
+          }
+          return;
+        }
+      }
+
+      // 3. Parse request body (if not already parsed by express.json() / body-parser)
+      let body = req.body;
+      if (!body) {
+        try {
+          body = await new Promise((resolve, reject) => {
+            const chunks = [];
+            req.on('data', (chunk) => chunks.push(chunk));
+            req.on('end', () => {
+              try {
+                const raw = Buffer.concat(chunks).toString('utf-8');
+                resolve(JSON.parse(raw));
+              } catch (e) {
+                reject(e);
+              }
+            });
+            req.on('error', reject);
+          });
+        } catch {
+          if (res.status && typeof res.status === 'function') {
+            return res.status(400).send('Bad Request: Invalid JSON body');
+          } else if (res.writeHead) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            return res.end('Bad Request: Invalid JSON body');
+          }
+          return;
+        }
+      }
+
+      // 4. Dispatch to router
+      try {
+        await this.handle(body, { req, res }, this.api);
+
+        if (res.status && typeof res.status === 'function') {
+          return res.status(200).send('OK');
+        } else if (res.writeHead) {
+          res.writeHead(200, { 'Content-Type': 'text/plain' });
+          return res.end('OK');
+        }
+      } catch (err) {
+        if (typeof options.onError === 'function') {
+          options.onError(err, req, res);
+        } else if (this.onError) {
+          this.onError(err);
+        }
+
+        if (!res.headersSent) {
+          if (res.status && typeof res.status === 'function') {
+            return res.status(500).send('Internal Server Error');
+          } else if (res.writeHead) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            return res.end('Internal Server Error');
+          }
+        }
+      }
+    };
   }
 }
 

@@ -549,17 +549,76 @@ bot.use(pacer({
 }));
 ```
 
-### Universal WinterCG Web Standards (`bot.fetch()`)
-Deploy to Cloudflare Workers, Deno Deploy, Bun, Next.js Edge, and Fastly in 3 lines, with timing-safe secret token verification and zero-roundtrip Webhook Reply acceleration:
+### Universal Deployment & Execution
 
+Gramless runs identically across **all** execution targets—from V8 serverless isolates to traditional Linux servers—with **zero external runtime dependencies**:
+
+#### 1. Cloudflare Workers
 ```javascript
-// Cloudflare Workers / Deno / Bun entrypoint:
+import { createBot } from 'gramless';
+
+const bot = createBot();
+bot.command('start', (ctx) => ctx.reply('Hello from Cloudflare Workers!'));
+
 export default {
   fetch: bot.fetch({
     secretToken: env.TELEGRAM_SECRET_TOKEN, // Timing-safe constant-time verification
-    webhookReply: true,                     // Intercepts first reply and returns it in HTTP 200 JSON
+    webhookReply: true,                     // Returns reply in HTTP 200 JSON, eliminating outbound latency
+    background: true,                       // Executes remaining work via ctx.waitUntil()
   }),
 };
+```
+
+#### 2. Vercel & Next.js
+```javascript
+// app/api/webhook/route.js (Next.js App Router / Vercel Edge)
+import { createBot } from 'gramless';
+
+const bot = createBot({ token: process.env.BOT_TOKEN });
+bot.command('start', (ctx) => ctx.reply('Hello from Next.js on Vercel!'));
+
+export const POST = bot.webhook({ secretToken: process.env.SECRET_TOKEN });
+```
+
+#### 3. Traditional Servers (Express, Fastify, Node `http`)
+```javascript
+// Express webhook:
+import express from 'express';
+import { createBot, webhookCallback } from 'gramless';
+
+const app = express();
+app.use(express.json());
+
+const bot = createBot({ token: process.env.BOT_TOKEN });
+bot.command('start', (ctx) => ctx.reply('Hello from Express!'));
+
+app.use('/webhook', webhookCallback(bot, { secretToken: process.env.SECRET_TOKEN }));
+app.listen(3000);
+```
+
+#### 4. Long Polling (Local Development & VPS)
+No public domain, reverse proxy, or SSL certificates needed:
+```javascript
+import { createBot } from 'gramless';
+
+const bot = createBot({ token: process.env.BOT_TOKEN });
+bot.command('start', (ctx) => ctx.reply('Polling live!'));
+
+await bot.start({
+  dropPendingUpdates: true,
+  onStart: () => console.log('🤖 Bot started polling'),
+});
+```
+
+#### 5. Telegram Serverless (`tgcloud`)
+```javascript
+// handlers/message.js:
+import { createBot } from 'gramless';
+
+const bot = createBot();
+bot.command('start', (ctx) => ctx.reply('Hello from TGCloud!'));
+
+export default bot.handler();
 ```
 
 ### Structured Telegram Error Diagnostics (`ApiError`)
