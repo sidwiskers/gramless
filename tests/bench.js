@@ -1,4 +1,4 @@
-import { createBot } from '../src/index.js';
+import { createBot, html } from '../src/index.js';
 import { v } from '../src/endpoint.js';
 
 console.log('--- Gramless Performance & Scale Benchmark ---');
@@ -106,9 +106,21 @@ t1 = performance.now();
 const schemaMicros = ((t1 - t0) / SCHEMA_ITERS) * 1000;
 const schemaOps = Math.round((SCHEMA_ITERS / (t1 - t0)) * 1000);
 
+// Benchmark 5: Safe Entity HTML Template Literal
+const HTML_ITERS = 50000;
+const testUser = { name: '<Alexander the Great & Co>', id: 987654 };
+t0 = performance.now();
+for (let i = 0; i < HTML_ITERS; i++) {
+  html`Welcome <b>${testUser.name}</b> (<code>${testUser.id}</code>)!`;
+}
+t1 = performance.now();
+const htmlMicros = ((t1 - t0) / HTML_ITERS) * 1000;
+const htmlOps = Math.round((HTML_ITERS / (t1 - t0)) * 1000);
+
 console.log(`[Results across ${ITERS.toLocaleString()} iterations]`);
 console.log(`• Exact Command Dispatch (1,000 routes):  ${cmdMicros.toFixed(2)} µs / op  (${cmdOps.toLocaleString()} ops/sec)`);
 console.log(`• Exact Action Dispatch  (500 routes):    ${actionMicros.toFixed(2)} µs / op  (${actionOps.toLocaleString()} ops/sec)`);
 console.log(`• 10-Layer Middleware Pipeline:           ${middlewareMicros.toFixed(2)} µs / op  (${middlewareOps.toLocaleString()} ops/sec)`);
 console.log(`• Schema Validation Engine (v):           ${schemaMicros.toFixed(2)} µs / op  (${schemaOps.toLocaleString()} ops/sec)`);
+console.log(`• Safe HTML Template Literal (html):      ${htmlMicros.toFixed(2)} µs / op  (${htmlOps.toLocaleString()} ops/sec)`);
 console.log('----------------------------------------------');

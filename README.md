@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-117%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -90,10 +90,10 @@ Routing is compiled into immutable lookup tables upon registration. Dispatching 
 gramless/
 ├── src/
 │   ├── index.js          # Root facade & bot constructor
-│   ├── router.js         # Constant-time route compiler & update dispatcher
+│   ├── router.js         # Constant-time route compiler, update dispatcher & fetch adapter
 │   ├── context.js        # Ergonomic Context facade with full Bot API coverage
 │   ├── filters.js        # Composable functional filter predicates
-│   ├── errors.js         # Typed error system with token & credential sanitization
+│   ├── errors.js         # Typed error system with classification & token sanitization
 │   ├── session.js        # Transactional SQLite session engine with rollback
 │   ├── fsm.js            # Finite State Machine / conversation scenes
 │   ├── endpoint.js       # Mini App RPC bridge with zero-dependency schema validation
@@ -106,10 +106,13 @@ gramless/
 │   ├── auto_retry.js     # Telegram 429 flood wait auto-retry interceptor
 │   ├── stateless_question.js # Zero-state force_reply prompts
 │   ├── cleaner.js        # Message cleaner & temp notice purger
+│   ├── format.js         # Zero-dependency safe entity escaping & template tags
+│   ├── init_data.js      # Cryptographic Mini App auth via Web Crypto API
+│   ├── pacer.js          # Proactive flood control (1s DM, 3s group pacing)
 │   └── testkit/          # Gramless Lab: deterministic offline test harness
 ├── types/
 │   └── index.d.ts        # Comprehensive TypeScript definitions
-└── tests/                # 70 unit, integration, and benchmark tests
+└── tests/                # 117 unit, integration, and benchmark tests
 ```
 
 ---
@@ -498,6 +501,80 @@ bot.command('search', async (ctx) => {
   await ctx.cleanTracked();
   await ctx.reply(`Found ${results.length} results!`);
 });
+```
+
+### Safe Formatting & Templates (`gramless/format`)
+Eliminates `400 Bad Request: can't parse entities` by auto-escaping user inputs while preserving HTML / Markdown tags:
+
+```javascript
+import { html, md, fmt } from 'gramless/format';
+
+bot.command('profile', async (ctx) => {
+  // Unsafe characters in user inputs are automatically escaped:
+  const text = html`Welcome <b>${ctx.from.first_name}</b>!
+Balance: <code>${100} Stars</code>
+Status: ${fmt.bold('Active VIP')}
+Bio: ${fmt.spoiler(userBio)}`;
+
+  await ctx.replyWithHtml(text);
+});
+```
+
+### Cryptographic Mini App Authentication (`gramless/init-data`)
+Validates Telegram Mini App (tApp) `initData` query strings with zero external dependencies using the native Web Crypto API (`crypto.subtle`):
+
+```javascript
+import { validateInitData, parseInitData } from 'gramless/init-data';
+
+const result = await validateInitData(rawInitData, process.env.BOT_TOKEN, {
+  maxAge: 86400, // 24-hour replay protection
+});
+
+if (result.ok) {
+  console.log('Authenticated User:', result.data.user);
+}
+```
+
+### Proactive Flood Control & Group Pacing (`gramless/pacer`)
+Automatically paces outbound messages to strictly respect Telegram's rate limits (1 msg/sec for DMs, 20 msgs/min for groups, 30 msgs/sec globally):
+
+```javascript
+import { pacer } from 'gramless/pacer';
+
+// Injects proactive leaky-bucket serialization into ctx.api
+bot.use(pacer({
+  minPrivateChatIntervalMs: 1000, // 1 msg/sec in private chats
+  minGroupChatIntervalMs: 3000,   // 20 msgs/min (3s interval) in groups
+  globalLimitPerSec: 30,          // 30 msgs/sec across all chats
+}));
+```
+
+### Universal WinterCG Web Standards (`bot.fetch()`)
+Deploy to Cloudflare Workers, Deno Deploy, Bun, Next.js Edge, and Fastly in 3 lines, with timing-safe secret token verification and zero-roundtrip Webhook Reply acceleration:
+
+```javascript
+// Cloudflare Workers / Deno / Bun entrypoint:
+export default {
+  fetch: bot.fetch({
+    secretToken: env.TELEGRAM_SECRET_TOKEN, // Timing-safe constant-time verification
+    webhookReply: true,                     // Intercepts first reply and returns it in HTTP 200 JSON
+  }),
+};
+```
+
+### Structured Telegram Error Diagnostics (`ApiError`)
+Zero-allocation error classification for all 13 Telegram runtime failure modes:
+
+```javascript
+import { isBlockedError, isNotModifiedError, isPermissionError } from 'gramless';
+
+try {
+  await ctx.editKeyboard(newButtons);
+} catch (err) {
+  if (isNotModifiedError(err)) return; // Harmless button double-tap, ignore
+  if (isBlockedError(err)) await db.markUserInactive(ctx.userId);
+  if (err.isPermissionDenied) await ctx.reply('⚠️ Admin permissions required.');
+}
 ```
 
 ---
