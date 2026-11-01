@@ -492,4 +492,173 @@ export class GramlessRouter {
       return this.handle(input, ctx, this.api);
     };
   }
+
+  /**
+   * Universal Web Standards (WinterCG) fetch adapter for Cloudflare Workers,
+   * Deno Deploy, Bun, Next.js Edge, Fastly, and native Request/Response runtimes.
+   * 
+   * Features:
+   * - Timing-safe constant-time secret token verification (`X-Telegram-Bot-Api-Secret-Token`)
+   * - Webhook Reply Acceleration: Intercepts the first outbound reply and returns it directly
+   *   in the HTTP 200 response JSON, eliminating 100% of outbound roundtrip latency.
+   * 
+   * Usage:
+   *   export default { fetch: bot.fetch({ secretToken: 'secret', webhookReply: true }) };
+   * 
+   * @param {Object} [options={}]
+   * @param {string} [options.secretToken] Secret token to verify
+   * @param {boolean} [options.webhookReply=false] Enable zero-roundtrip webhook reply
+   * @param {Function} [options.onError] Custom HTTP error handler override
+   * @returns {(request: any, env?: any, ctx?: any) => Promise<any>}
+   */
+  fetch(options = {}) {
+    const secretToken = options.secretToken || null;
+    const enableWebhookReply = options.webhookReply === true;
+
+    return async (request, env = {}, executionCtx = {}) => {
+      // 1. HTTP Method guard
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', {
+          status: 405,
+          headers: { Allow: 'POST', 'Content-Type': 'text/plain' },
+        });
+      }
+
+      // 2. Timing-safe secret token verification
+      if (secretToken) {
+        const headerToken = request.headers.get('x-telegram-bot-api-secret-token') || '';
+        if (!timingSafeEqual(headerToken, secretToken)) {
+          return new Response('Unauthorized: Invalid secret token', {
+            status: 401,
+            headers: { 'Content-Type': 'text/plain' },
+          });
+        }
+      }
+
+      // 3. Parse JSON body
+      let payload;
+      try {
+        payload = await request.json();
+      } catch {
+        return new Response('Bad Request: Invalid JSON body', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+
+      // 4. API resolution
+      let effectiveApi = this.api;
+      if (!effectiveApi && env?.BOT_TOKEN) {
+        const botToken = env.BOT_TOKEN;
+        effectiveApi = {
+          call: async (method, params = {}) => {
+            const res = await globalThis.fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(params),
+            });
+            const data = await res.json();
+            if (!data.ok) {
+              const err = new Error(data.description || 'Telegram API Error');
+              err.errorCode = data.error_code;
+              err.parameters = data.parameters;
+              throw err;
+            }
+            return data.result;
+          },
+        };
+      }
+
+      // 5. Webhook Reply Interceptor
+      let webhookReplyPayload = null;
+      let requestApi = effectiveApi;
+
+      if (enableWebhookReply) {
+        let replied = false;
+        requestApi = {
+          call: async (method, params = {}) => {
+            if (!replied && !hasBinaryData(params)) {
+              replied = true;
+              webhookReplyPayload = { method, ...params };
+              return { ok: true, result: true };
+            }
+            if (effectiveApi && typeof effectiveApi.call === 'function') {
+              return effectiveApi.call(method, params);
+            }
+            return { ok: true };
+          },
+        };
+      }
+
+      // 6. Router Dispatch
+      try {
+        const platformCtx = { request, env, executionCtx };
+        await this.handle(payload, platformCtx, requestApi);
+
+        if (webhookReplyPayload) {
+          return new Response(JSON.stringify(webhookReplyPayload), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response('OK', {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      } catch (err) {
+        if (typeof options.onError === 'function') {
+          return options.onError(err, request);
+        }
+        return new Response('Internal Server Error', {
+          status: 500,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+    };
+  }
+
+  /**
+   * Alias for fetch(): Standard Webhook Request/Response handler.
+   * @param {Object} [options={}]
+   * @returns {Function}
+   */
+  webhook(options = {}) {
+    return this.fetch(options);
+  }
+}
+
+/**
+ * Constant-time string comparison for timing-safe secret token verification.
+ * @private
+ */
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  let mismatch = a.length === b.length ? 0 : 1;
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    const charA = a.charCodeAt(i % a.length) || 0;
+    const charB = b.charCodeAt(i % b.length) || 0;
+    mismatch |= (charA ^ charB);
+  }
+  return mismatch === 0;
+}
+
+/**
+ * Checks if a params object contains binary data (Uint8Array, Buffer, Blob).
+ * @private
+ */
+function hasBinaryData(params) {
+  if (!params || typeof params !== 'object') return false;
+  for (const key of Object.keys(params)) {
+    const val = params[key];
+    if (
+      val instanceof Uint8Array ||
+      (typeof ArrayBuffer !== 'undefined' && val instanceof ArrayBuffer) ||
+      (typeof Blob !== 'undefined' && val instanceof Blob)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }

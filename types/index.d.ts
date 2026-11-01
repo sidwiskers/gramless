@@ -225,6 +225,16 @@ export class GramlessRouter {
   fallback(...handlers: HandlerFunction[]): this;
   handle(input: any, ctx?: any, api?: any): Promise<boolean>;
   handler(): (input: any, ctx: any) => Promise<any>;
+  fetch(options?: {
+    secretToken?: string;
+    webhookReply?: boolean;
+    onError?: (err: Error, request: any) => any;
+  }): (request: any, env?: any, ctx?: any) => Promise<any>;
+  webhook(options?: {
+    secretToken?: string;
+    webhookReply?: boolean;
+    onError?: (err: Error, request: any) => any;
+  }): (request: any, env?: any, ctx?: any) => Promise<any>;
 }
 
 export const Filter: {
@@ -506,6 +516,39 @@ export interface Fmt {
 }
 
 export const fmt: Fmt;
+
+// --- Cryptographic Mini App (tApp) Auth ---
+export function timingSafeEqual(a: string, b: string): boolean;
+export function parseInitData(initData: string): Record<string, any>;
+export function validateInitData(
+  initData: string,
+  botToken: string,
+  options?: { maxAge?: number; now?: number }
+): Promise<{ ok: boolean; data?: Record<string, any>; error?: string; message?: string }>;
+export function initDataAuth(
+  botToken: string,
+  options?: { optional?: boolean; maxAge?: number }
+): MiddlewareFunction;
+
+// --- Proactive Per-Chat Flood Control Pacer ---
+export class ChatPacer {
+  constructor(options?: {
+    minChatIntervalMs?: number;
+    globalLimitPerSec?: number;
+    methods?: Set<string> | string[];
+  });
+  enqueue<T>(chatId: string | number | null | undefined, callFn: () => Promise<T>): Promise<T>;
+  wrapApi(api: any): any;
+}
+
+export function wrapPacer(
+  api: any,
+  options?: { minChatIntervalMs?: number; globalLimitPerSec?: number; methods?: Set<string> | string[] }
+): any;
+
+export function pacer(
+  options?: { minChatIntervalMs?: number; globalLimitPerSec?: number; methods?: Set<string> | string[] }
+): MiddlewareFunction;
 
 export function createBot(options?: {
   api?: any;

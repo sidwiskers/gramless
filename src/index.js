@@ -52,6 +52,17 @@ export {
   escapeMarkdown,
   escapeMarkdownV1,
 } from './format.js';
+export {
+  validateInitData,
+  parseInitData,
+  timingSafeEqual,
+  initDataAuth,
+} from './init_data.js';
+export {
+  ChatPacer,
+  wrapPacer,
+  pacer,
+} from './pacer.js';
 
 /**
  * Creates a new Gramless bot application router.
