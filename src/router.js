@@ -591,8 +591,24 @@ export class GramlessRouter {
       }
 
       // 6. Router Dispatch
+      const platformCtx = { request, env, executionCtx };
+
+      // Optional background execution on Cloudflare Workers / Vercel Edge via waitUntil
+      if (options.background && typeof executionCtx?.waitUntil === 'function' && !enableWebhookReply) {
+        executionCtx.waitUntil(
+          this.handle(payload, platformCtx, requestApi).catch((err) => {
+            if (typeof options.onError === 'function') {
+              options.onError(err, request);
+            }
+          })
+        );
+        return new Response('OK', {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+
       try {
-        const platformCtx = { request, env, executionCtx };
         await this.handle(payload, platformCtx, requestApi);
 
         if (webhookReplyPayload) {

@@ -128,6 +128,39 @@ describe('Universal Web Standards Fetch & Webhook Adapter (bot.fetch)', () => {
     assert.equal(body.parse_mode, 'HTML');
   });
 
+  it('delegates execution to executionCtx.waitUntil when background option is true', async () => {
+    const bot = createBot();
+    let handled = false;
+
+    bot.command('bg', async () => {
+      handled = true;
+    });
+
+    const fetchHandler = bot.fetch({ background: true });
+    let waitedPromise = null;
+    const executionCtx = {
+      waitUntil: (p) => {
+        waitedPromise = p;
+      },
+    };
+
+    const req = new Request('https://example.com/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        update_id: 200,
+        message: { text: '/bg' },
+      }),
+    });
+
+    const res = await fetchHandler(req, {}, executionCtx);
+    assert.equal(res.status, 200);
+    assert.notEqual(waitedPromise, null);
+
+    await waitedPromise;
+    assert.equal(handled, true);
+  });
+
   it('provides bot.webhook as an alias for bot.fetch', async () => {
     const bot = createBot();
     const webhookHandler = bot.webhook();

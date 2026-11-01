@@ -263,11 +263,13 @@ export class GramlessRouter {
   fetch(options?: {
     secretToken?: string;
     webhookReply?: boolean;
+    background?: boolean;
     onError?: (err: Error, request: any) => any;
   }): (request: any, env?: any, ctx?: any) => Promise<any>;
   webhook(options?: {
     secretToken?: string;
     webhookReply?: boolean;
+    background?: boolean;
     onError?: (err: Error, request: any) => any;
   }): (request: any, env?: any, ctx?: any) => Promise<any>;
 }
