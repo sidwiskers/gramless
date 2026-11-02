@@ -19,10 +19,11 @@ All measurements are conducted using Node.js's high-resolution performance timer
 
 | Scenario | Complexity / Scale | Latency (µs / op) | Throughput (ops / sec) |
 | :--- | :--- | :--- | :--- |
-| **Exact Command Dispatch** | 1,000 registered routes | **2.44 µs** | **409,792** |
-| **Exact Action Dispatch** | 500 registered callback routes | **0.97 µs** | **1,031,676** |
-| **Middleware Pipeline** | 10 onion layers + route execution | **7.86 µs** | **127,232** |
-| **Schema Validation (`v`)** | Multi-field object + nested constraints | **0.46 µs** | **2,153,877** |
+| **Exact Action Dispatch** | 500 registered callback routes | **0.92 µs** | **1,087,209** |
+| **Exact Command Dispatch** | 1,000 registered routes | **2.25 µs** | **444,131** |
+| **Schema Validation (`v`)** | Multi-field object + nested constraints | **0.49 µs** | **2,023,848** |
+| **Safe HTML Template (`html`)** | Tagged template literal interpolation | **1.74 µs** | **573,865** |
+| **Middleware Pipeline** | 10 onion layers + route execution | **7.01 µs** | **142,666** |
 
 ---
 

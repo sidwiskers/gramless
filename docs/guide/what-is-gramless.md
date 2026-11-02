@@ -28,5 +28,5 @@ Gramless addresses these constraints by compiling routing tables at startup, exe
 | **Callback Query Dispatch** | Linear search | **$O(1)$ Hash Map & Prefix Index (0.92 µs)** |
 | **Session Persistence** | In-memory cache or external DB | **ACID SQLite with automatic rollback** |
 | **Mini App Endpoints** | External web server | **Built-in `createEndpoint` + `v` validator** |
-| **Offline Testing** | Requires live bot token or mocks | **In-memory test lab (`gramless/lab`)** |
+| **Offline Testing** | Requires live bot token or mocks | **In-memory test lab (`gramless/testkit`)** |
 | **Supported Runtimes** | Node.js servers | **TGCloud, Cloudflare Workers, Vercel, Node.js** |

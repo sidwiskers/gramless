@@ -49,3 +49,10 @@ Update B ─────────────────── waiting ─�
 ```
 
 This completely eliminates lost read-modify-write updates.
+
+---
+
+## Important Scope Considerations
+
+- **Scope of Rollback:** Transactional rollback applies strictly to staged session state (`ctx.session`). Outbound HTTP calls already delivered to Telegram (such as `await ctx.reply()`) are irrevocable network actions and cannot be undone if a downstream error occurs.
+- **Concurrency Scope:** `KeyedMutex` serializes concurrent operations reaching the same V8 isolate process. In distributed environments where Telegram Serverless dispatches concurrent updates to separate parallel isolates, cross-isolate database coordination is handled at the SQLite storage layer.

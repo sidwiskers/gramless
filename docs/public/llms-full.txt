@@ -42,7 +42,7 @@ Gramless addresses these constraints by compiling routing tables at startup, exe
 | **Callback Query Dispatch** | Linear search | **$O(1)$ Hash Map & Prefix Index (0.92 µs)** |
 | **Session Persistence** | In-memory cache or external DB | **ACID SQLite with automatic rollback** |
 | **Mini App Endpoints** | External web server | **Built-in `createEndpoint` + `v` validator** |
-| **Offline Testing** | Requires live bot token or mocks | **In-memory test lab (`gramless/lab`)** |
+| **Offline Testing** | Requires live bot token or mocks | **In-memory test lab (`gramless/testkit`)** |
 | **Supported Runtimes** | Node.js servers | **TGCloud, Cloudflare Workers, Vercel, Node.js** |
 
 ---
@@ -238,6 +238,25 @@ handlers/message.js   handlers/callback_query.js
 - **Async Database Calls:** Every query in `sdk/db` must be awaited (`await db.select()...run()`).
 - **No Foreign Key Declarations:** `PRAGMA foreign_keys = OFF`. Do not use `.references()`.
 - **Always Answer Callback Queries:** Call `await ctx.answer()` inside button handlers to dismiss loading feedback.
+
+---
+
+## Deploying to TGCloud V8 Isolates
+
+Telegram Serverless isolates execute JavaScript directly from `tgcloud/` without an npm runtime. You can deploy Gramless using either of two workflows:
+
+### 1. Zero-Build Vendoring (Recommended for pure serverless)
+Vendor Gramless directly into your project's `tgcloud/lib/`:
+```bash
+npx gramless vendor
+```
+Then import natively with relative paths:
+```javascript
+import { createBot, Filter, session } from '../lib/gramless.js';
+```
+
+### 2. Bundled Workflow
+If using npm package specifiers (`import { createBot } from 'gramless'`), use a bundler (e.g., `esbuild` or `vite`) to produce flat output files in `tgcloud/` prior to running `tgcloud push`.
 
 ---
 
@@ -503,6 +522,13 @@ Update B ─────────────────── waiting ─�
 ```
 
 This completely eliminates lost read-modify-write updates.
+
+---
+
+## Important Scope Considerations
+
+- **Scope of Rollback:** Transactional rollback applies strictly to staged session state (`ctx.session`). Outbound HTTP calls already delivered to Telegram (such as `await ctx.reply()`) are irrevocable network actions and cannot be undone if a downstream error occurs.
+- **Concurrency Scope:** `KeyedMutex` serializes concurrent operations reaching the same V8 isolate process. In distributed environments where Telegram Serverless dispatches concurrent updates to separate parallel isolates, cross-isolate database coordination is handled at the SQLite storage layer.
 
 ---
 

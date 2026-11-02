@@ -137,14 +137,15 @@ export class KeyedMutex {
       release = resolve;
     });
 
-    this.queues.set(key, prevPromise.then(() => currentPromise));
+    const chainedPromise = prevPromise.then(() => currentPromise, () => currentPromise);
+    this.queues.set(key, chainedPromise);
 
     try {
       await prevPromise;
       return await fn();
     } finally {
       release();
-      if (this.queues.get(key) === currentPromise) {
+      if (this.queues.get(key) === chainedPromise) {
         this.queues.delete(key);
       }
     }

@@ -77,3 +77,30 @@ test('Endpoint: schema validation failures return detailed field issues', async 
   assert.equal(response.issues[0].field, 'email');
   assert.equal(response.issues[1].field, 'age');
 });
+
+test('Endpoint: internal exceptions do not leak sensitive error messages to client by default', async () => {
+  const failingEndpoint = createEndpoint(
+    { requireAuth: false },
+    async () => {
+      throw new Error('FATAL: Database connection string postgresql://admin:secret@10.0.0.1:5432 failed');
+    }
+  );
+
+  const response = await failingEndpoint({}, {});
+  assert.equal(response.ok, false);
+  assert.equal(response.error, 'INTERNAL_ERROR');
+  assert.equal(response.message, 'An unexpected internal error occurred');
+  assert.equal(response.message.includes('secret'), false);
+
+  // When exposeErrors is true:
+  const debugEndpoint = createEndpoint(
+    { requireAuth: false, exposeErrors: true },
+    async () => {
+      throw new Error('Debug test error message');
+    }
+  );
+  const debugResponse = await debugEndpoint({}, {});
+  assert.equal(debugResponse.ok, false);
+  assert.equal(debugResponse.error, 'INTERNAL_ERROR');
+  assert.equal(debugResponse.message, 'Debug test error message');
+});

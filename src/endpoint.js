@@ -181,10 +181,13 @@ export function createEndpoint(config, handler) {
         };
       }
 
+      // Hide raw internal error messages from client by default
       return {
         ok: false,
         error: 'INTERNAL_ERROR',
-        message: err.message || 'An unexpected error occurred in endpoint',
+        message: config.exposeErrors === true
+          ? (err.message || 'Internal server error')
+          : 'An unexpected internal error occurred',
       };
     }
   };

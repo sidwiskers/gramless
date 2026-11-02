@@ -129,6 +129,35 @@ describe('gramless/init-data: Cryptographic Mini App Authentication', () => {
       assert.equal(result.error, 'EXPIRED');
     });
 
+    it('rejects far-future auth_date to prevent unexpiring forged tokens', async () => {
+      const payload = {
+        query_id: 'AAHd123',
+        auth_date: '1800000000', // far in future
+      };
+
+      const signedInitData = await createSignedInitData(payload, BOT_TOKEN);
+      const result = await validateInitData(signedInitData, BOT_TOKEN, {
+        now: 1700000000, // current time
+      });
+
+      assert.equal(result.ok, false);
+      assert.equal(result.error, 'FUTURE_AUTH_DATE');
+    });
+
+    it('permits near-future auth_date within 60s clock skew tolerance', async () => {
+      const payload = {
+        query_id: 'AAHd123',
+        auth_date: '1700000030', // 30s in future
+      };
+
+      const signedInitData = await createSignedInitData(payload, BOT_TOKEN);
+      const result = await validateInitData(signedInitData, BOT_TOKEN, {
+        now: 1700000000,
+      });
+
+      assert.equal(result.ok, true);
+    });
+
     it('rejects missing hash and missing arguments', async () => {
       const noHash = await validateInitData('query_id=123', BOT_TOKEN);
       assert.equal(noHash.error, 'MISSING_HASH');

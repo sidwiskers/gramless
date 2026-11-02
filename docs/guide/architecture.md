@@ -50,3 +50,23 @@ handlers/message.js   handlers/callback_query.js
 - **Async Database Calls:** Every query in `sdk/db` must be awaited (`await db.select()...run()`).
 - **No Foreign Key Declarations:** `PRAGMA foreign_keys = OFF`. Do not use `.references()`.
 - **Always Answer Callback Queries:** Call `await ctx.answer()` inside button handlers to dismiss loading feedback.
+
+---
+
+## Deploying to TGCloud V8 Isolates
+
+Telegram Serverless isolates execute JavaScript directly from `tgcloud/` without an npm runtime. You can deploy Gramless using either of two workflows:
+
+### 1. Zero-Build Vendoring (Recommended for pure serverless)
+Vendor Gramless directly into your project's `tgcloud/lib/`:
+```bash
+npx gramless vendor
+```
+Then import natively with relative paths:
+```javascript
+import { createBot, Filter, session } from '../lib/gramless.js';
+```
+
+### 2. Bundled Workflow
+If using npm package specifiers (`import { createBot } from 'gramless'`), use a bundler (e.g., `esbuild` or `vite`) to produce flat output files in `tgcloud/` prior to running `tgcloud push`.
+

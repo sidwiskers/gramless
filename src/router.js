@@ -7,6 +7,7 @@
 
 import { GramlessContext } from './context.js';
 import { RoutingError, PanicError, ApiError } from './errors.js';
+import { timingSafeEqual } from './init_data.js';
 
 /**
  * Creates a zero-dependency Telegram Bot API client using standard globalThis.fetch.
@@ -844,22 +845,6 @@ export class GramlessRouter {
       }
     };
   }
-}
-
-/**
- * Constant-time string comparison for timing-safe secret token verification.
- * @private
- */
-function timingSafeEqual(a, b) {
-  if (typeof a !== 'string' || typeof b !== 'string') return false;
-  let mismatch = a.length === b.length ? 0 : 1;
-  const len = Math.max(a.length, b.length);
-  for (let i = 0; i < len; i++) {
-    const charA = a.charCodeAt(i % a.length) || 0;
-    const charB = b.charCodeAt(i % b.length) || 0;
-    mismatch |= (charA ^ charB);
-  }
-  return mismatch === 0;
 }
 
 /**

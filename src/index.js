@@ -34,6 +34,7 @@ export {
   MemorySessionStore,
   TgCloudSessionStore,
   SessionKey,
+  KeyedMutex,
 } from './session.js';
 export { createFSM, FsmMachine } from './fsm.js';
 export { createEndpoint, v } from './endpoint.js';

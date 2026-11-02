@@ -1,35 +1,108 @@
 {
   "name": "gramless",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Ultra-fast, zero-dependency, transactional Telegram Serverless framework engineered for TGCloud",
   "type": "module",
   "main": "src/index.js",
   "types": "./types/index.d.ts",
+  "bin": {
+    "gramless": "./bin/gramless.js"
+  },
   "exports": {
     ".": {
       "types": "./types/index.d.ts",
       "import": "./src/index.js",
       "default": "./src/index.js"
     },
-    "./filters": "./src/filters.js",
-    "./testkit": "./src/testkit/index.js",
-    "./session": "./src/session.js",
-    "./fsm": "./src/fsm.js",
-    "./endpoint": "./src/endpoint.js",
-    "./ratelimit": "./src/ratelimit.js",
-    "./i18n": "./src/i18n.js",
-    "./menu": "./src/menu.js",
-    "./deeplink": "./src/deeplink.js",
-    "./payments": "./src/payments.js",
-    "./media-group": "./src/media_group.js",
-    "./auto-retry": "./src/auto_retry.js",
-    "./stateless-question": "./src/stateless_question.js",
-    "./cleaner": "./src/cleaner.js",
-    "./format": "./src/format.js",
-    "./init-data": "./src/init_data.js",
-    "./pacer": "./src/pacer.js"
+    "./filters": {
+      "types": "./types/filters.d.ts",
+      "import": "./src/filters.js",
+      "default": "./src/filters.js"
+    },
+    "./testkit": {
+      "types": "./types/testkit.d.ts",
+      "import": "./src/testkit/index.js",
+      "default": "./src/testkit/index.js"
+    },
+    "./session": {
+      "types": "./types/session.d.ts",
+      "import": "./src/session.js",
+      "default": "./src/session.js"
+    },
+    "./fsm": {
+      "types": "./types/fsm.d.ts",
+      "import": "./src/fsm.js",
+      "default": "./src/fsm.js"
+    },
+    "./endpoint": {
+      "types": "./types/endpoint.d.ts",
+      "import": "./src/endpoint.js",
+      "default": "./src/endpoint.js"
+    },
+    "./ratelimit": {
+      "types": "./types/ratelimit.d.ts",
+      "import": "./src/ratelimit.js",
+      "default": "./src/ratelimit.js"
+    },
+    "./i18n": {
+      "types": "./types/i18n.d.ts",
+      "import": "./src/i18n.js",
+      "default": "./src/i18n.js"
+    },
+    "./menu": {
+      "types": "./types/menu.d.ts",
+      "import": "./src/menu.js",
+      "default": "./src/menu.js"
+    },
+    "./deeplink": {
+      "types": "./types/deeplink.d.ts",
+      "import": "./src/deeplink.js",
+      "default": "./src/deeplink.js"
+    },
+    "./payments": {
+      "types": "./types/payments.d.ts",
+      "import": "./src/payments.js",
+      "default": "./src/payments.js"
+    },
+    "./media-group": {
+      "types": "./types/media-group.d.ts",
+      "import": "./src/media_group.js",
+      "default": "./src/media_group.js"
+    },
+    "./auto-retry": {
+      "types": "./types/auto-retry.d.ts",
+      "import": "./src/auto_retry.js",
+      "default": "./src/auto_retry.js"
+    },
+    "./stateless-question": {
+      "types": "./types/stateless-question.d.ts",
+      "import": "./src/stateless_question.js",
+      "default": "./src/stateless_question.js"
+    },
+    "./cleaner": {
+      "types": "./types/cleaner.d.ts",
+      "import": "./src/cleaner.js",
+      "default": "./src/cleaner.js"
+    },
+    "./format": {
+      "types": "./types/format.d.ts",
+      "import": "./src/format.js",
+      "default": "./src/format.js"
+    },
+    "./init-data": {
+      "types": "./types/init-data.d.ts",
+      "import": "./src/init_data.js",
+      "default": "./src/init_data.js"
+    },
+    "./pacer": {
+      "types": "./types/pacer.d.ts",
+      "import": "./src/pacer.js",
+      "default": "./src/pacer.js"
+    }
   },
   "scripts": {
+    "build": "node scripts/build-standalone.js",
+    "pretest": "node scripts/build-standalone.js",
     "test": "node --test tests/*.test.js",
     "bench": "node tests/bench.js",
     "docs:dev": "vitepress dev docs",
@@ -63,7 +136,9 @@
   "homepage": "https://github.com/sidwiskers/gramless#readme",
   "files": [
     "src",
+    "dist",
     "types",
+    "bin",
     "README.md",
     "LICENSE"
   ],

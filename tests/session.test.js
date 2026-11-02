@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { session, MemorySessionStore, TgCloudSessionStore, SessionKey } from '../src/session.js';
+import { session, MemorySessionStore, TgCloudSessionStore, SessionKey, KeyedMutex } from '../src/session.js';
 import { GramlessRouter } from '../src/router.js';
 
 test('Session: persists state across sequential handler calls', async () => {
@@ -143,4 +143,42 @@ test('Session: TgCloud SQLite adapter simulation', async () => {
   await tgStore.delete('chat_user:1:2');
   const afterDel = await tgStore.get('chat_user:1:2');
   assert.equal(afterDel, null);
+});
+
+test('KeyedMutex: serializes execution and cleans up keys on completion', async () => {
+  const mutex = new KeyedMutex();
+  const executionOrder = [];
+
+  // Run 3 concurrent operations on the same key
+  const p1 = mutex.acquire('user:42', async () => {
+    await new Promise((r) => setTimeout(r, 20));
+    executionOrder.push('first');
+    return 1;
+  });
+
+  const p2 = mutex.acquire('user:42', async () => {
+    executionOrder.push('second');
+    return 2;
+  });
+
+  const p3 = mutex.acquire('user:42', async () => {
+    executionOrder.push('third');
+    return 3;
+  });
+
+  const results = await Promise.all([p1, p2, p3]);
+  assert.deepEqual(results, [1, 2, 3]);
+  assert.deepEqual(executionOrder, ['first', 'second', 'third']);
+
+  // Verify memory cleanup: queues must be empty!
+  assert.equal(mutex.queues.size, 0, 'Mutex queues must be empty after all promises settle');
+
+  // Run across 200 distinct keys concurrently
+  const keyPromises = [];
+  for (let i = 0; i < 200; i++) {
+    keyPromises.push(mutex.acquire(`batch:${i}`, async () => i * 2));
+  }
+  const batchResults = await Promise.all(keyPromises);
+  assert.equal(batchResults.length, 200);
+  assert.equal(mutex.queues.size, 0, 'All 200 distinct keys must be cleaned up from queues map');
 });

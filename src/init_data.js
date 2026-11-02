@@ -153,13 +153,24 @@ export async function validateInitData(initData, botToken, options = {}) {
       return { ok: false, error: 'INVALID_SIGNATURE', message: 'Cryptographic hash mismatch' };
     }
 
-    // 3. Replay Protection: Check auth_date expiration
+    // 3. Replay Protection: Check auth_date expiration and future timestamp
     const parsedData = parseInitData(initData);
     const maxAge = options.maxAge !== undefined ? options.maxAge : 86400; // 24 hours default
-    if (maxAge > 0 && typeof parsedData.auth_date === 'number') {
+    if (typeof parsedData.auth_date === 'number') {
       const currentSeconds = options.now !== undefined ? options.now : Math.floor(Date.now() / 1000);
       const age = currentSeconds - parsedData.auth_date;
-      if (age > maxAge) {
+
+      // Reject future auth_date (allowing 60 seconds tolerance for client-server clock drift)
+      if (age < -60) {
+        return {
+          ok: false,
+          error: 'FUTURE_AUTH_DATE',
+          message: `initData auth_date is in the future (skew: ${-age}s > 60s)`,
+          data: parsedData,
+        };
+      }
+
+      if (maxAge > 0 && age > maxAge) {
         return {
           ok: false,
           error: 'EXPIRED',
