@@ -58,9 +58,32 @@ Get up and running with **Gramless** on Telegram Serverless in under 2 minutes.
 
 ---
 
-## 1. Installation
+## 1. Quick Scaffolding (Recommended)
 
-Install Gramless using your preferred package manager:
+Scaffold a complete project interactively in seconds:
+
+::: code-group
+```bash [npm]
+npm create gramless@latest
+```
+```bash [pnpm]
+pnpm create gramless
+```
+```bash [yarn]
+yarn create gramless
+```
+```bash [bun]
+bun create gramless
+```
+:::
+
+Select your desired runtime (*TGCloud Serverless*, *Cloudflare Workers*, *Node.js Polling*, or *Fullstack Mini App*), and the directory structure, configuration, and starter code are generated automatically.
+
+---
+
+## 2. Manual Installation
+
+Or install Gramless directly into an existing project:
 
 ::: code-group
 ```bash [npm]

@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-127%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-131%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -12,7 +12,10 @@
 
 It provides pre-compiled route dispatching, transactional SQLite sessions with automatic rollback, composable filters, typed Bot API helpers, Mini App RPC endpoints, and an offline testing lab.
 
-> **Recipes:** See the [**Gramless Cookbook**](https://github.com/sidwiskers/gramless-cookbook) for standalone reference implementations covering SQLite CRUD, FSM wizards, Mini App RPC, and Telegram Stars.
+```bash
+# Scaffold a new project in seconds
+npm create gramless@latest
+```
 
 ```javascript
 import { createBot, Filter } from 'gramless';

@@ -1,0 +1,38 @@
+{
+  "name": "create-gramless",
+  "version": "1.0.0",
+  "description": "Scaffold a production Telegram bot with Gramless",
+  "type": "module",
+  "bin": {
+    "create-gramless": "./bin/index.js"
+  },
+  "main": "./bin/index.js",
+  "files": [
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "create-gramless",
+    "gramless",
+    "telegram",
+    "telegram-bot",
+    "serverless",
+    "tgcloud",
+    "cloudflare-workers",
+    "scaffold",
+    "starter"
+  ],
+  "author": "sidwiskers",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidwiskers/gramless.git",
+    "directory": "packages/create-gramless"
+  },
+  "bugs": {
+    "url": "https://github.com/sidwiskers/gramless/issues"
+  },
+  "homepage": "https://github.com/sidwiskers/gramless#readme"
+}
