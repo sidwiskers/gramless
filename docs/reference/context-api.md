@@ -46,5 +46,5 @@ Full method specification for `GramlessContext`.
 - `ctx.delete()`: Deletes current message.
 - `ctx.pin(options)` / `ctx.unpin()`: Pins or unpins current message.
 
-### Day-Zero Raw Call
+### Direct Method Invocation
 - `ctx.call(method, params)`: Calls any Telegram Bot API method directly.

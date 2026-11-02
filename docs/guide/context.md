@@ -49,12 +49,11 @@ await ctx.sendDice('🎯');
 
 ---
 
-## Day-Zero Escape Hatches
+## Direct API Access (`ctx.call`)
 
-Gramless never limits you to pre-existing methods. If Telegram releases a new method today, call it immediately:
+Any method supported by the Telegram Bot API can be called directly:
 
 ```javascript
-// Raw method escape hatch:
 await ctx.call('sendPaidMedia', {
   chat_id: ctx.chatId,
   star_count: 10,
