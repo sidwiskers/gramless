@@ -7,9 +7,10 @@ test('cleaner: tracks and deletes temporary messages', async () => {
   const router = new GramlessRouter();
   const deletedMessages = [];
 
+  let msgSeq = 100;
   const mockApi = {
     async sendMessage(params) {
-      return { message_id: 100 + Math.floor(Math.random() * 100), ...params };
+      return { message_id: ++msgSeq, ...params };
     },
     async deleteMessage(params) {
       deletedMessages.push(params.message_id);
