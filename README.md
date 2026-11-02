@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-117%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-127%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.3%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#august-24-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -8,11 +8,11 @@
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
 [![Cookbook](https://img.shields.io/badge/cookbook-8%20recipes-purple.svg)](https://github.com/sidwiskers/gramless-cookbook)
 
-**Gramless** is a zero-dependency Telegram framework built for **Telegram Serverless (TGCloud)** and isolated V8 runtimes.
+**Gramless** is a zero-dependency Telegram bot framework built for **Telegram Serverless (TGCloud)**, Cloudflare Workers, and traditional Node.js servers.
 
-It provides route dispatch, transactional SQLite sessions with automatic rollback, composable filters, Bot API helpers, Mini App RPC endpoints, and offline testing via **Gramless Lab**.
+It provides pre-compiled route dispatching, transactional SQLite sessions with automatic rollback, composable filters, typed Bot API helpers, Mini App RPC endpoints, and an offline testing lab.
 
-> **Production Recipes:** Explore the [**Gramless Cookbook**](https://github.com/sidwiskers/gramless-cookbook) for complete projects covering SQLite CRUD, FSM wizards, Mini App RPC, Telegram Stars, and offline testing.
+> **Recipes:** See the [**Gramless Cookbook**](https://github.com/sidwiskers/gramless-cookbook) for standalone reference implementations covering SQLite CRUD, FSM wizards, Mini App RPC, and Telegram Stars.
 
 ```javascript
 import { createBot, Filter } from 'gramless';
@@ -41,30 +41,28 @@ bot.action('settings:view', async (ctx) => {
   });
 });
 
-// Single-line handler export for Telegram Serverless:
+// Export handler for Telegram Serverless:
 export default bot.handler();
 ```
 
 ---
 
-## Why Gramless?
+## Design Overview
 
-Telegram Serverless runs code inside lightweight, global V8 isolates. In this environment:
-* Standard node bot frameworks (**grammY, Telegraf, Teloxide**) are unusable: they expect long-polling loops, external webhooks, bot tokens, and heavy npm dependency trees.
-* Writing vanilla TGCloud handlers forces developers into brittle, unmaintainable string-matching spaghetti without session safety, typed keyboards, or testing tools.
+Telegram Serverless (`tgcloud`) runs bot code inside sandboxed V8 isolates where `node_modules` are not available at runtime. Traditional Node.js bot libraries (Telegraf, grammY) carry 25–35 external dependencies and are designed around long-lived server processes.
 
-Gramless bridges this gap with zero compromises:
+Writing raw handlers directly on the platform requires implementing manual command routing, callback parsing, and state persistence. Gramless provides these abstractions in pure JavaScript with zero external runtime dependencies.
 
-| Metric / Capability | Vanilla TGCloud | Traditional Frameworks | Gramless |
+| Feature | Raw Handlers | Traditional Frameworks | Gramless |
 | :--- | :---: | :---: | :---: |
-| **Runtime Overhead** | Low (raw JS) | High (heavy bundle) | **Zero (pure ESM, 0 dependencies)** |
-| **Command Lookup (1,000 routes)** | $O(N)$ manual checks | $O(N)$ regex scanning | **$O(1)$ Hash Map (2.44 µs)** |
-| **Callback Dispatch** | Manual `.split(':')` | Regex matching | **Length-partitioned prefix trie (0.97 µs)** |
-| **Session Safety** | Manual SQL queries | Racy in-memory/Redis | **ACID SQLite with automatic rollback** |
-| **Bot API Method Coverage** | Raw `api.*` proxy | Varying | **100% typed Context facade + escape hatches** |
-| **Offline Testability** | None (push to cloud) | Requires live token | **Gramless Lab (100% in-process)** |
-| **Mini App RPC** | Raw POST handlers | External server | **Native type-safe `createEndpoint`** |
-| **Type Safety** | None | npm `@types/*` | **First-class `types/index.d.ts` included** |
+| **Runtime Dependencies** | None | 25–35 packages | **0 packages** |
+| **Command Lookup (1,000 routes)** | Manual `if/else` | Sequential regex scan | **$O(1)$ Hash Map (2.25 µs)** |
+| **Callback Query Dispatch** | String splitting | Regex scan | **$O(1)$ Hash Map & Prefix Index (0.92 µs)** |
+| **Session Persistence** | Manual SQL queries | In-memory / external cache | **ACID SQLite with automatic rollback** |
+| **Bot API Methods** | Raw `api.*` proxy | Custom wrappers | **Typed Context facade + direct `ctx.call`** |
+| **Offline Testing** | Cloud deployment | Mocking libraries | **In-memory test lab (`gramless/lab`)** |
+| **Mini App Endpoints** | Raw HTTP POST | External web server | **Built-in `createEndpoint`** |
+| **TypeScript Support** | None | `@types/*` packages | **Built-in `types/index.d.ts`** |
 
 ---
 
@@ -75,12 +73,15 @@ Recorded on an ARM64 host across 10,000 warm iterations (`npm run bench`):
 ```text
 --- Gramless Performance & Scale Benchmark ---
 [Results across 10,000 iterations]
-• Exact Command Dispatch (1,000 routes):  2.44 µs / op
-• Exact Action Dispatch  (500 routes):    0.97 µs / op
+• Exact Action Dispatch  (500 routes):    0.92 µs / op  (1,087,209 ops/sec)
+• Exact Command Dispatch (1,000 routes):  2.25 µs / op  (444,131 ops/sec)
+• Schema Validation Engine (v):           0.49 µs / op  (2,023,848 ops/sec)
+• Safe HTML Template Literal (html):      1.74 µs / op  (573,865 ops/sec)
+• 10-Layer Middleware Pipeline:           7.01 µs / op  (142,666 ops/sec)
 ----------------------------------------------
 ```
 
-Routing is compiled into immutable lookup tables upon registration. Dispatching across 1,000 commands incurs zero array allocations on the hot path.
+Routes are compiled into static lookup tables upon registration, avoiding array iterations and allocations on incoming update paths.
 
 ---
 
@@ -504,13 +505,15 @@ bot.command('search', async (ctx) => {
 ```
 
 ### Safe Formatting & Templates (`gramless/format`)
-Eliminates `400 Bad Request: can't parse entities` by auto-escaping user inputs while preserving HTML / Markdown tags:
+When sending messages with `HTML` or `MarkdownV2` parse modes, unescaped reserved characters (`<`, `>`, `&` in HTML, or `_`, `*`, `[`, `]` in MarkdownV2) cause Telegram to return `400 Bad Request: can't parse entities`.
+
+The `html` and `md` tagged template literals escape interpolated dynamic values while preserving literal formatting tags:
 
 ```javascript
 import { html, md, fmt } from 'gramless/format';
 
 bot.command('profile', async (ctx) => {
-  // Unsafe characters in user inputs are automatically escaped:
+  // Dynamic variables are automatically escaped; tags and fmt helpers are preserved:
   const text = html`Welcome <b>${ctx.from.first_name}</b>!
 Balance: <code>${100} Stars</code>
 Status: ${fmt.bold('Active VIP')}
@@ -521,13 +524,13 @@ Bio: ${fmt.spoiler(userBio)}`;
 ```
 
 ### Cryptographic Mini App Authentication (`gramless/init-data`)
-Validates Telegram Mini App (tApp) `initData` query strings with zero external dependencies using the native Web Crypto API (`crypto.subtle`):
+Validates Telegram Mini App `initData` query strings using HMAC-SHA256 over the standard Web Crypto API (`crypto.subtle`). Supports replay attack defense via `maxAge` and automatically unpacks serialized `user` and `receiver` objects:
 
 ```javascript
 import { validateInitData, parseInitData } from 'gramless/init-data';
 
 const result = await validateInitData(rawInitData, process.env.BOT_TOKEN, {
-  maxAge: 86400, // 24-hour replay protection
+  maxAge: 86400, // Reject if auth_date is older than 24 hours
 });
 
 if (result.ok) {
@@ -536,7 +539,12 @@ if (result.ok) {
 ```
 
 ### Proactive Flood Control & Group Pacing (`gramless/pacer`)
-Automatically paces outbound messages to strictly respect Telegram's rate limits (1 msg/sec for DMs, 20 msgs/min for groups, 30 msgs/sec globally):
+Enforces Telegram's outbound rate limits per chat:
+- **Private chats (`chat_id > 0`):** 1 message per second (1,000ms spacing).
+- **Group and channel chats (`chat_id < 0`):** 20 messages per minute (3,000ms spacing).
+- **Global limit:** 30 messages per second across all chats.
+
+Outbound messages are queued per chat, allowing distinct chats to proceed concurrently without triggering `429 Too Many Requests`:
 
 ```javascript
 import { pacer } from 'gramless/pacer';
@@ -551,7 +559,7 @@ bot.use(pacer({
 
 ### Universal Deployment & Execution
 
-Gramless runs identically across **all** execution targets—from V8 serverless isolates to traditional Linux servers—with **zero external runtime dependencies**:
+Gramless runs identically across all supported execution targets with zero external runtime dependencies:
 
 #### 1. Cloudflare Workers
 ```javascript
@@ -562,8 +570,8 @@ bot.command('start', (ctx) => ctx.reply('Hello from Cloudflare Workers!'));
 
 export default {
   fetch: bot.fetch({
-    secretToken: env.TELEGRAM_SECRET_TOKEN, // Timing-safe constant-time verification
-    webhookReply: true,                     // Returns reply in HTTP 200 JSON, eliminating outbound latency
+    secretToken: env.TELEGRAM_SECRET_TOKEN, // Constant-time verification
+    webhookReply: true,                     // Returns reply in HTTP 200 JSON, eliminating outbound roundtrip
     background: true,                       // Executes remaining work via ctx.waitUntil()
   }),
 };
@@ -597,7 +605,7 @@ app.listen(3000);
 ```
 
 #### 4. Long Polling (Local Development & VPS)
-No public domain, reverse proxy, or SSL certificates needed:
+For environments without a public domain or webhook endpoint:
 ```javascript
 import { createBot } from 'gramless';
 
@@ -606,7 +614,7 @@ bot.command('start', (ctx) => ctx.reply('Polling live!'));
 
 await bot.start({
   dropPendingUpdates: true,
-  onStart: () => console.log('🤖 Bot started polling'),
+  onStart: () => console.log('Bot started polling'),
 });
 ```
 
@@ -630,20 +638,20 @@ import { isBlockedError, isNotModifiedError, isPermissionError } from 'gramless'
 try {
   await ctx.editKeyboard(newButtons);
 } catch (err) {
-  if (isNotModifiedError(err)) return; // Harmless button double-tap, ignore
+  if (isNotModifiedError(err)) return; // Ignored: button double-tap with identical markup
   if (isBlockedError(err)) await db.markUserInactive(ctx.userId);
-  if (err.isPermissionDenied) await ctx.reply('⚠️ Admin permissions required.');
+  if (err.isPermissionDenied) await ctx.reply('Admin permissions required.');
 }
 ```
 
 ---
 
-## Day-Zero Escape Hatches
+## Direct API Access (`ctx.call`)
 
-Gramless never restricts access to the Telegram Bot API. If Telegram introduces a new feature today, call it immediately:
+Any method supported by the Telegram Bot API can be called directly without relying on framework updates:
 
 ```javascript
-// High-level ergonomic sugar:
+// High-level helpers:
 await ctx.reply('Hello');
 await ctx.edit('Updated text');
 await ctx.sendPoll('Question', ['A', 'B']);
@@ -651,22 +659,23 @@ await ctx.sendPoll('Question', ['A', 'B']);
 // Direct platform API proxy:
 await ctx.api.sendChatAction({ chat_id: ctx.chatId, action: 'typing' });
 
-// Permanent raw escape hatch:
-await ctx.call('newTelegramMethod2026', { chat_id: ctx.chatId, custom_param: true });
+// Raw method call:
+await ctx.call('sendMessage', { chat_id: ctx.chatId, text: 'Direct call' });
 ```
 
 ---
 
-## Benchmarks & Scale
+## Benchmarks
 
-Gramless is engineered from first principles for sub-millisecond execution in isolated V8 environments:
+Measured on an ARM64 host across 10,000 warm iterations (`npm run bench`):
 
 | Scenario | Complexity / Scale | Latency (µs / op) | Throughput (ops / sec) |
 | :--- | :--- | :--- | :--- |
-| **Exact Command Dispatch** | 1,000 registered routes | **2.44 µs** | **409,792** |
-| **Exact Action Dispatch** | 500 registered callback routes | **0.97 µs** | **1,031,676** |
-| **Middleware Pipeline** | 10 onion layers + route execution | **7.86 µs** | **127,232** |
-| **Schema Validation (`v`)** | Multi-field object + nested constraints | **0.46 µs** | **2,153,877** |
+| **Exact Action Dispatch** | 500 registered callback routes | **0.92 µs** | **1,087,209** |
+| **Exact Command Dispatch** | 1,000 registered routes | **2.25 µs** | **444,131** |
+| **Schema Validation (`v`)** | Multi-field object + nested constraints | **0.49 µs** | **2,023,848** |
+| **Safe HTML Template (`html`)** | Tagged template literal interpolation | **1.74 µs** | **573,865** |
+| **10-Layer Middleware** | 10 onion layers + route execution | **7.01 µs** | **142,666** |
 
 For reproducible methodology and benchmark details, see [benchmarks/RESULTS.md](benchmarks/RESULTS.md).
 

@@ -18,17 +18,17 @@ hero:
 
 features:
   - title: Zero Runtime Dependencies
-    details: Pure modern ECMAScript standard library. Boots in < 3ms inside V8 isolates with zero supply-chain vulnerabilities.
+    details: Written in standard ECMAScript. Executes directly in V8 isolates and edge runtimes with zero external packages.
   - title: Sub-Microsecond Routing
-    details: Pre-compiled $O(1)$ Hash Map command routing (2.44 µs) and length-partitioned prefix tries (0.97 µs).
+    details: Pre-compiled $O(1)$ Hash Map command routing (2.25 µs) and action callback dispatch (0.92 µs).
   - title: ACID Transactional Sessions
-    details: SQLite state commits only if the handler resolves successfully. Any error or panic triggers an automatic rollback.
-  - title: 100% Telegram Bot API
-    details: Complete ergonomic method surface with automatic chat_id inference, plus raw escape hatches (ctx.call) for day-zero API updates.
+    details: SQLite state commits only when the handler completes successfully. Unhandled errors trigger an automatic rollback.
+  - title: Complete Bot API & Direct Calls
+    details: Helper methods with automatic chat_id inference, plus direct access (ctx.call) for all Telegram Bot API methods.
   - title: Mini App RPC Bridge
-    details: Native serverless endpoint handlers (createEndpoint) with cryptographic initData verification and zero-dep validation (v).
-  - title: Hermetic Offline Lab
-    details: In-process testkit to simulate realistic user conversations, clicks, and session persistence completely offline in node:test.
+    details: Serverless endpoint handlers (createEndpoint) with platform initData verification and built-in schema validation (v).
+  - title: Universal Execution
+    details: Direct support for TGCloud, Cloudflare Workers, Vercel, and traditional Node.js servers with long polling.
 ---
 
 <div style="margin-top: 40px; text-align: center;">
