@@ -23,7 +23,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
 
       - name: Run Test Suite
-        run: npm test
+        run: node --test --test-reporter spec tests/*.test.js
 
       - name: Publish Gramless to NPM with Provenance
         run: |

@@ -2,6 +2,7 @@ import { test, describe, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -9,18 +10,32 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const cliBin = path.join(rootDir, 'packages/create-gramless/bin/index.js');
-const testScratchDir = path.join(rootDir, 'tests/.scratch-cli');
+
+const tmpBase = fs.existsSync(os.tmpdir()) ? os.tmpdir() : path.join(rootDir, 'tests');
+const createdDirs = [];
+
+function makeTempTarget(name) {
+  const dir = fs.mkdtempSync(path.join(tmpBase, `gramless-test-${name}-`));
+  const target = path.join(dir, name);
+  createdDirs.push(dir);
+  return target;
+}
 
 describe('create-gramless CLI Scaffolder', () => {
   afterEach(() => {
-    if (fs.existsSync(testScratchDir)) {
-      fs.rmSync(testScratchDir, { recursive: true, force: true });
+    while (createdDirs.length > 0) {
+      const dir = createdDirs.pop();
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        // ignore
+      }
     }
   });
 
   test('scaffolds Telegram Serverless (tgcloud) JavaScript template', () => {
-    const target = path.join(testScratchDir, 'my-tgcloud-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--js', '--yes']);
+    const target = makeTempTarget('my-tgcloud-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--js', '--yes', '--no-git', '--no-install']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, '.gitignore')));
@@ -35,8 +50,8 @@ describe('create-gramless CLI Scaffolder', () => {
   });
 
   test('scaffolds Telegram Serverless (tgcloud) TypeScript template', () => {
-    const target = path.join(testScratchDir, 'my-tgcloud-ts-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--ts', '--yes']);
+    const target = makeTempTarget('my-tgcloud-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--ts', '--yes', '--no-git', '--no-install']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
@@ -49,8 +64,8 @@ describe('create-gramless CLI Scaffolder', () => {
   });
 
   test('scaffolds Cloudflare Workers TypeScript template', () => {
-    const target = path.join(testScratchDir, 'my-cf-ts-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'cloudflare', '--ts', '--yes']);
+    const target = makeTempTarget('my-cf-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'cloudflare', '--ts', '--yes', '--no-git', '--no-install']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
@@ -63,8 +78,8 @@ describe('create-gramless CLI Scaffolder', () => {
   });
 
   test('scaffolds Node.js Long Polling TypeScript template', () => {
-    const target = path.join(testScratchDir, 'my-polling-ts-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'polling', '--ts', '--yes']);
+    const target = makeTempTarget('my-polling-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'polling', '--ts', '--yes', '--no-git', '--no-install']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
@@ -76,8 +91,8 @@ describe('create-gramless CLI Scaffolder', () => {
   });
 
   test('scaffolds Fullstack Telegram Mini App template', () => {
-    const target = path.join(testScratchDir, 'my-mini-app');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'mini-app', '--yes']);
+    const target = makeTempTarget('my-mini-app');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'mini-app', '--yes', '--no-git', '--no-install']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, '.gitignore')));
