@@ -1,0 +1,48 @@
+# Gramless
+
+> Zero-dependency, transactional Telegram framework for Telegram Serverless (TGCloud), edge V8 isolates (Cloudflare Workers, Vercel), and Node.js.
+
+Gramless is a lightweight, sub-microsecond framework for developing Telegram bots and Telegram Mini Apps. It features zero external runtime dependencies, pre-compiled constant-time ($O(1)$) routing, ACID transactional SQLite sessions with automatic rollback, composable functional filters, and native support for serverless handlers, traditional long polling, and standard Node.js HTTP webhooks.
+
+## Key Capabilities
+
+- **Zero Runtime Dependencies:** Native ECMAScript with zero external packages. Zero supply-chain attack surface and near-instant cold starts (<1 ms).
+- **Sub-Microsecond Dispatch:** Pre-compiled $O(1)$ Hash Map routing (2.25 µs command dispatch, 0.92 µs action dispatch).
+- **ACID Transactional Sessions:** In-memory session staging with automatic rollback on unhandled errors; state commits to SQLite (`sdk/db`) only upon successful completion.
+- **Universal Execution:** Supports Telegram Serverless (`export default bot.handler()`), Cloudflare Workers / Fetch standard (`bot.fetch`), traditional long polling (`bot.start()` / `bot.stop()`), and Node HTTP / Express / Fastify (`bot.webhookCallback()`).
+- **Direct Telegram Bot API Access:** High-level helpers with automatic identifier inference, plus `ctx.call(method, params)` for calling any Telegram Bot API method directly.
+- **Offline Hermetic Testing:** Built-in testkit (`gramless/testkit`) providing virtual actors, deterministic event replay, and assertions without network calls or bot tokens.
+
+## Core Documentation
+
+- [What is Gramless?](https://sidwiskers.github.io/gramless/guide/what-is-gramless): Background, architectural motivation, comparison with grammY and Telegraf.
+- [Quickstart Guide](https://sidwiskers.github.io/gramless/guide/getting-started): Setup in under 2 minutes for serverless and Node.js.
+- [TGCloud Architecture](https://sidwiskers.github.io/gramless/guide/architecture): Execution lifecycle, V8 isolates, and atomic SQLite persistence.
+- [Routing & Middleware](https://sidwiskers.github.io/gramless/guide/routing): $O(1)$ command matching, callback query dispatch, and onion middleware pipeline.
+- [Context & API Facade](https://sidwiskers.github.io/gramless/guide/context): High-level message/media helpers and direct Telegram Bot API access via `ctx.call`.
+- [Composable Filters](https://sidwiskers.github.io/gramless/guide/filters): Pure functional predicates and logical combinators (`Filter.all`, `Filter.any`, `Filter.not`).
+- [ACID Sessions](https://sidwiskers.github.io/gramless/guide/sessions): Transactional session rollback and in-process mutex serialization.
+- [Conversation Wizards (FSM)](https://sidwiskers.github.io/gramless/guide/fsm): Multi-turn state machines with validation guards.
+- [Mini App RPC Endpoints](https://sidwiskers.github.io/gramless/guide/endpoints): Serverless RPC bridge with Telegram `initData` authentication and schema validation (`v`).
+
+## API Reference
+
+- [Context API Reference](https://sidwiskers.github.io/gramless/reference/context-api): Complete specification of `GramlessContext` properties and methods.
+- [Filter Predicates Reference](https://sidwiskers.github.io/gramless/reference/filter-api): Standard content and chat type predicates.
+- [Gramless Lab Reference](https://sidwiskers.github.io/gramless/reference/testkit): Deterministic offline test runner and virtual user actors.
+- [Performance Benchmarks](https://sidwiskers.github.io/gramless/reference/benchmarks): Measured microsecond execution times and memory allocations on ARM64 Node.js.
+
+## Cookbooks & Production Recipes
+
+- [Recipe 01: Minimal Bot](https://sidwiskers.github.io/gramless/cookbook/01-minimal-bot): Recommended directory layout and single-line handler exports.
+- [Recipe 02: Transactional SQLite CRUD](https://sidwiskers.github.io/gramless/cookbook/02-database-crud): SQLite persistence with `sdk/db` and transactional rollback.
+- [Recipe 03: Conversation Wizards](https://sidwiskers.github.io/gramless/cookbook/03-onboarding-wizard): Multi-step conversational forms.
+- [Recipe 04: Fullstack Mini App RPC](https://sidwiskers.github.io/gramless/cookbook/04-mini-app-rpc): Client-side Mini App integration with backend endpoints.
+- [Recipe 05: Telegram Stars Paywall](https://sidwiskers.github.io/gramless/cookbook/05-telegram-stars): Invoices, pre-checkout queries, and digital goods.
+- [Recipe 06: Group Moderation](https://sidwiskers.github.io/gramless/cookbook/06-group-moderation): Spam filtering and administration methods.
+- [Recipe 07: Hermetic Testing](https://sidwiskers.github.io/gramless/cookbook/07-lab-testing): Offline test suites using `gramless/testkit` and `node:test`.
+- [Recipe 08: Migration Guide](https://sidwiskers.github.io/gramless/cookbook/08-migration-guide): Translating grammY and Telegraf patterns to Gramless.
+
+## Consolidated Full Documentation
+
+- [Full Consolidated Docs](https://sidwiskers.github.io/gramless/llms-full.txt): Complete documentation concatenated in a single markdown file for full context ingestion by LLMs.

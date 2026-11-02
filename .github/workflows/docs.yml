@@ -33,8 +33,8 @@ jobs:
       - name: Install Dependencies
         run: npm install
 
-      - name: Build VitePress Site
-        run: npx vitepress build docs
+      - name: Build VitePress Site and LLM Index
+        run: npm run docs:build
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
