@@ -105,12 +105,43 @@ export class ChatPacer {
     this.minPrivateChatIntervalMs = options.minPrivateChatIntervalMs ?? options.minChatIntervalMs ?? 1000;
     this.minGroupChatIntervalMs = options.minGroupChatIntervalMs ?? 3000;
     this.globalTokenBucket = new GlobalTokenBucket(options.globalLimitPerSec ?? 30);
+    this.maxConcurrent = options.maxConcurrent ?? 0;
+    this.activeCount = 0;
+    /** @type {Array<() => void>} */
+    this.concurrencyWaiters = [];
+
     this.pacedMethods = options.methods
       ? new Set(options.methods)
       : DEFAULT_PACED_METHODS;
 
-    /** @type {Map<string|number, { lastDispatch: number, queue: Array<() => void>, running: boolean }>} */
+    /** @type {Map<string|number, number>} Bounded chat last dispatch timestamps */
+    this.chatLastDispatch = new Map();
+
+    /** @type {Map<string|number, { queue: Array<() => void>, running: boolean }>} */
     this.queues = new Map();
+  }
+
+  /**
+   * Acquires a concurrency slot if maxConcurrent is enforced.
+   * @private
+   */
+  async _acquireSlot() {
+    if (this.maxConcurrent > 0 && this.activeCount >= this.maxConcurrent) {
+      await new Promise((resolve) => this.concurrencyWaiters.push(resolve));
+    }
+    this.activeCount++;
+  }
+
+  /**
+   * Releases a concurrency slot and notifies waiters.
+   * @private
+   */
+  _releaseSlot() {
+    this.activeCount--;
+    if (this.concurrencyWaiters.length > 0) {
+      const nextWaiter = this.concurrencyWaiters.shift();
+      nextWaiter?.();
+    }
   }
 
   /**
@@ -122,18 +153,23 @@ export class ChatPacer {
    * @returns {Promise<T>}
    */
   async enqueue(chatId, callFn) {
-    // If no chatId is associated, execute subject only to global rate pacing
+    // If no chatId is associated, execute subject only to global rate pacing and maxConcurrent
     if (chatId === null || chatId === undefined) {
       const globalDelay = this.globalTokenBucket.acquireDelay();
       if (globalDelay > 0) {
         await new Promise((r) => setTimeout(r, globalDelay));
       }
-      return callFn();
+      await this._acquireSlot();
+      try {
+        return await callFn();
+      } finally {
+        this._releaseSlot();
+      }
     }
 
     let chatEntry = this.queues.get(chatId);
     if (!chatEntry) {
-      chatEntry = { lastDispatch: 0, queue: [], running: false };
+      chatEntry = { queue: [], running: false };
       this.queues.set(chatId, chatEntry);
     }
 
@@ -144,7 +180,8 @@ export class ChatPacer {
           const now = Date.now();
           const isGroup = isGroupChatId(chatId);
           const minInterval = isGroup ? this.minGroupChatIntervalMs : this.minPrivateChatIntervalMs;
-          const chatElapsed = now - chatEntry.lastDispatch;
+          const lastDispatch = this.chatLastDispatch.get(chatId) || 0;
+          const chatElapsed = now - lastDispatch;
           const chatDelay = Math.max(0, minInterval - chatElapsed);
 
           // 2. Calculate global bucket required wait
@@ -155,9 +192,14 @@ export class ChatPacer {
             await new Promise((r) => setTimeout(r, totalDelay));
           }
 
-          chatEntry.lastDispatch = Date.now();
-          const result = await callFn();
-          resolve(result);
+          await this._acquireSlot();
+          try {
+            this.chatLastDispatch.set(chatId, Date.now());
+            const result = await callFn();
+            resolve(result);
+          } finally {
+            this._releaseSlot();
+          }
         } catch (err) {
           reject(err);
         }
@@ -185,6 +227,16 @@ export class ChatPacer {
     entry.running = false;
     if (entry.queue.length === 0) {
       this.queues.delete(chatId);
+    }
+
+    // Opportunistically prune old chatLastDispatch timestamps
+    if (this.chatLastDispatch.size > 5000) {
+      const cutoff = Date.now() - 60000;
+      for (const [id, ts] of this.chatLastDispatch.entries()) {
+        if (ts < cutoff) {
+          this.chatLastDispatch.delete(id);
+        }
+      }
     }
   }
 

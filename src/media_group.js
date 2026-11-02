@@ -41,9 +41,12 @@ export class MediaGroupAggregator {
 
           try {
             await batch.next();
-          } finally {
-            for (const res of batch.resolvers) {
-              res();
+            for (let i = 0; i < batch.waiters.length; i++) {
+              batch.waiters[i].resolve();
+            }
+          } catch (err) {
+            for (let i = 0; i < batch.waiters.length; i++) {
+              batch.waiters[i].reject(err);
             }
           }
         }, this.timeout);
@@ -52,7 +55,7 @@ export class MediaGroupAggregator {
       if (!batch) {
         batch = {
           contexts: [ctx],
-          resolvers: [],
+          waiters: [],
           firstCtx: ctx,
           next,
           timer: null,
@@ -61,8 +64,8 @@ export class MediaGroupAggregator {
         this.batches.set(mediaGroupId, batch);
         scheduleFlush();
 
-        return new Promise((resolve) => {
-          batch.resolvers.push(resolve);
+        return new Promise((resolve, reject) => {
+          batch.waiters.push({ resolve, reject });
         });
       }
 
@@ -70,8 +73,8 @@ export class MediaGroupAggregator {
       batch.contexts.push(ctx);
       scheduleFlush();
 
-      return new Promise((resolve) => {
-        batch.resolvers.push(resolve);
+      return new Promise((resolve, reject) => {
+        batch.waiters.push({ resolve, reject });
       });
     };
   }

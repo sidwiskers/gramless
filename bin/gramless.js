@@ -53,6 +53,11 @@ if (command === 'vendor') {
   const destination = path.join(targetDir, 'gramless.js');
   fs.copyFileSync(sourceBundle, destination);
 
+  const sourceDts = path.join(rootDir, 'dist', 'gramless.d.ts');
+  if (fs.existsSync(sourceDts)) {
+    fs.copyFileSync(sourceDts, path.join(targetDir, 'gramless.d.ts'));
+  }
+
   const relDest = path.relative(process.cwd(), destination) || destination;
   console.log(`✔ Successfully vendored Gramless to ${relDest}`);
   console.log(`\nYou can now import natively in Telegram Serverless without node_modules:`);

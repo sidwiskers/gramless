@@ -47,11 +47,12 @@ for (const file of orderedFiles) {
   let content = fs.readFileSync(filePath, 'utf8');
 
   // Strip internal relative imports (e.g. import { ... } from './....js';)
-  content = content.replace(/^import\s+[\s\S]*?from\s+['"]\.\/.*?['"];?\s*$/gm, '');
+  // Ensure we match single import statements without crossing into unrelated code
+  content = content.replace(/^import\s+(?:\{[^}]*\}|(?!\bfrom\b)[^;]+)\s+from\s+['"]\.\/[^'"]+['"];?\s*$/gm, '');
 
-  // Strip intermediate export default object declarations
-  content = content.replace(/export\s+default\s+\{[\s\S]*?\};?/g, '');
-  content = content.replace(/export\s+default\s+.*?;/g, '');
+  // Strip intermediate export default object declarations (anchored to line start)
+  content = content.replace(/^export\s+default\s+\{[\s\S]*?\};?\s*$/gm, '');
+  content = content.replace(/^export\s+default\s+.*?;?\s*$/gm, '');
 
   bundle += `// --- Module: ${file} ---\n`;
   bundle += content.trim() + '\n\n';
@@ -66,5 +67,12 @@ bundle += `export default createBot;\n`;
 fs.mkdirSync(distDir, { recursive: true });
 const targetPath = path.join(distDir, 'gramless.js');
 fs.writeFileSync(targetPath, bundle, 'utf8');
+
+const dtsSource = path.join(rootDir, 'types', 'index.d.ts');
+const dtsTarget = path.join(distDir, 'gramless.d.ts');
+if (fs.existsSync(dtsSource)) {
+  fs.copyFileSync(dtsSource, dtsTarget);
+  console.log(`Successfully generated standalone types: ${dtsTarget}`);
+}
 
 console.log(`Successfully generated standalone bundle: ${targetPath} (${Buffer.byteLength(bundle, 'utf8')} bytes)`);

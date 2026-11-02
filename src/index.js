@@ -22,12 +22,14 @@ export {
   ValidationError,
   RoutingError,
   SessionError,
+  SessionConflictError,
   PanicError,
   sanitizeString,
   isBlockedError,
   isNotModifiedError,
   isPermissionError,
   isNotFoundError,
+  isParseEntityError,
 } from './errors.js';
 export {
   session,
@@ -35,6 +37,7 @@ export {
   TgCloudSessionStore,
   SessionKey,
   KeyedMutex,
+  safeClone,
 } from './session.js';
 export { createFSM, FsmMachine } from './fsm.js';
 export { createEndpoint, v } from './endpoint.js';

@@ -152,7 +152,7 @@ export class FsmMachine {
       }
 
       // Execute active step
-      await activeStep.handler(ctx);
+      await activeStep.handler(ctx, next);
     };
   }
 }

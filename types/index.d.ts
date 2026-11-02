@@ -89,6 +89,7 @@ export class ApiError extends GramlessError {
   readonly isQueryTooOld: boolean;
   readonly isRateLimited: boolean;
   readonly isTopicClosed: boolean;
+  readonly isParseEntityError: boolean;
   readonly isMediaRestricted: boolean;
 }
 
@@ -96,6 +97,7 @@ export function isBlockedError(err: unknown): boolean;
 export function isNotModifiedError(err: unknown): boolean;
 export function isPermissionError(err: unknown): boolean;
 export function isNotFoundError(err: unknown): boolean;
+export function isParseEntityError(err: unknown): boolean;
 
 export class ValidationError extends GramlessError {
   issues: Array<{ field: string; message: string }>;
@@ -103,6 +105,7 @@ export class ValidationError extends GramlessError {
 
 export class RoutingError extends GramlessError {}
 export class SessionError extends GramlessError {}
+export class SessionConflictError extends SessionError {}
 export class PanicError extends GramlessError {
   cause: unknown;
 }
@@ -260,6 +263,7 @@ export class GramlessRouter {
   on(trigger: string | FilterPredicate, ...handlers: HandlerFunction[]): this;
   group(filter?: FilterPredicate): GramlessRouter;
   fallback(...handlers: HandlerFunction[]): this;
+  compile(): this;
   handle(input: any, ctx?: any, api?: any): Promise<boolean>;
   handler(): (input: any, ctx: any) => Promise<any>;
   fetch(options?: {

@@ -76,6 +76,16 @@ export class MemoryRateLimitStore {
     }
 
     timestamps.push(now);
+
+    // Opportunistic memory cleanup if map grows large
+    if (this.storage.size > 1000) {
+      for (const [k, ts] of this.storage.entries()) {
+        if (ts.length === 0 || ts[ts.length - 1] <= windowStart) {
+          this.storage.delete(k);
+        }
+      }
+    }
+
     return {
       ok: true,
       remaining: limit - timestamps.length,
@@ -99,11 +109,17 @@ export class MemoryRateLimitStore {
 
 /**
  * Standard key resolvers for rate limiting.
+ * Safely handles numeric ID 0.
  */
 export const RateLimitKey = {
-  byUser: (ctx) => (ctx.userId ? `user:${ctx.userId}` : null),
-  byChat: (ctx) => (ctx.chatId ? `chat:${ctx.chatId}` : null),
-  byChatUser: (ctx) => (ctx.chatId && ctx.userId ? `chat_user:${ctx.chatId}:${ctx.userId}` : null),
+  byUser: (ctx) => (ctx.userId !== null && ctx.userId !== undefined ? `user:${ctx.userId}` : null),
+  byChat: (ctx) => (ctx.chatId !== null && ctx.chatId !== undefined ? `chat:${ctx.chatId}` : null),
+  byChatUser: (ctx) => (
+    ctx.chatId !== null && ctx.chatId !== undefined &&
+    ctx.userId !== null && ctx.userId !== undefined
+      ? `chat_user:${ctx.chatId}:${ctx.userId}`
+      : null
+  ),
 };
 
 /**
@@ -127,9 +143,9 @@ export function rateLimit(options = {}) {
 
   const defaultOnLimitReached = async (ctx, { retryAfterMs }) => {
     const secs = Math.ceil(retryAfterMs / 1000);
-    if (ctx.data !== null) {
+    if (ctx.data != null && typeof ctx.answer === 'function') {
       await ctx.answer(`Too fast! Please wait ${secs}s.`, { show_alert: true });
-    } else {
+    } else if (typeof ctx.reply === 'function') {
       await ctx.reply(`⚠️ Slow down! Please wait ${secs} second${secs > 1 ? 's' : ''} before trying again.`);
     }
   };

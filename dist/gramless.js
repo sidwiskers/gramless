@@ -5,7 +5,7 @@
  * Drop directly into tgcloud/lib/gramless.js and import:
  *   import { createBot, Filter, session } from './lib/gramless.js';
  * 
- * Version: 1.3.4
+ * Version: 1.3.5
  * License: MIT
  */
 
@@ -16,7 +16,7 @@
  * Provides structured, typed errors with token and credential sanitization.
  */
 
-const TOKEN_PATTERN = /(?:bot)?\d{5,16}:[A-Za-z0-9_-]{20,50}/g;
+const TOKEN_PATTERN = /(?:bot)?\d{5,16}:[A-Za-z0-9_-]{10,60}/g;
 
 /**
  * Sanitizes strings, removing any Telegram bot tokens or sensitive credentials.
@@ -57,15 +57,16 @@ export class ApiError extends GramlessError {
    * @param {Record<string, unknown>} [parameters={}]
    */
   constructor(method, description, errorCode = 400, parameters = {}) {
-    super(`Telegram API call ${method} failed (${errorCode}): ${description}`, 'API_ERROR', {
+    const cleanDesc = sanitizeString(description);
+    super(`Telegram API call ${method} failed (${errorCode}): ${cleanDesc}`, 'API_ERROR', {
       method,
       errorCode,
-      description,
+      description: cleanDesc,
       parameters,
     });
     this.method = method;
     this.errorCode = errorCode;
-    this.description = description;
+    this.description = cleanDesc;
     this.parameters = parameters;
   }
 
@@ -106,6 +107,7 @@ export class ApiError extends GramlessError {
     if (this.isQueryTooOld) return 'QUERY_TOO_OLD';
     if (this.isRateLimited) return 'RATE_LIMITED';
     if (this.isTopicClosed) return 'TOPIC_CLOSED';
+    if (this.isParseEntityError) return 'PARSE_ENTITY_ERROR';
     if (this.isMediaRestricted) return 'MEDIA_RESTRICTED';
     return 'UNKNOWN';
   }
@@ -170,9 +172,16 @@ export class ApiError extends GramlessError {
     return /message thread not found|TOPIC_CLOSED|TOPIC_DELETED/i.test(this.description);
   }
 
+  /** True if entity parsing (Markdown/HTML tags) failed */
+  get isParseEntityError() {
+    return this.errorCode === 400 && /can't parse entities|entity_parse_failed/i.test(this.description);
+  }
+
   /** True if media upload failed due to size, format, or chat media restrictions */
   get isMediaRestricted() {
-    return /wrong file identifier|file is too big|can't parse entities|photo|media|document/i.test(this.description) && (this.errorCode === 400 || this.errorCode === 403);
+    return (this.errorCode === 400 || this.errorCode === 403) &&
+      !this.isParseEntityError &&
+      /wrong file identifier|file is too big|failed to get HTTP URL content|IMAGE_PROCESS_FAILED|PHOTO_INVALID_DIMENSIONS|wrong type of the specified file|MEDIA_CAPTION_TOO_LONG|chat doesn't allow media messages|MEDIA_RESTRICTED/i.test(this.description);
   }
 }
 
@@ -215,6 +224,15 @@ export function isNotFoundError(err) {
 }
 
 /**
+ * Checks if an error was caused by an entity or formatting parse error (e.g. invalid HTML or Markdown).
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isParseEntityError(err) {
+  return err instanceof ApiError ? err.isParseEntityError : false;
+}
+
+/**
  * Thrown when input validation fails (e.g. in RPC endpoints or route parameters).
  */
 export class ValidationError extends GramlessError {
@@ -243,6 +261,16 @@ export class RoutingError extends GramlessError {
 export class SessionError extends GramlessError {
   constructor(message, details = {}) {
     super(message, 'SESSION_ERROR', details);
+  }
+}
+
+/**
+ * Thrown when an optimistic concurrency conflict occurs during session commit.
+ */
+export class SessionConflictError extends SessionError {
+  constructor(message = 'Session state conflict: concurrent update detected', details = {}) {
+    super(message, { code: 'SESSION_CONFLICT', ...details });
+    this.code = 'SESSION_CONFLICT';
   }
 }
 
@@ -1047,12 +1075,43 @@ export class ChatPacer {
     this.minPrivateChatIntervalMs = options.minPrivateChatIntervalMs ?? options.minChatIntervalMs ?? 1000;
     this.minGroupChatIntervalMs = options.minGroupChatIntervalMs ?? 3000;
     this.globalTokenBucket = new GlobalTokenBucket(options.globalLimitPerSec ?? 30);
+    this.maxConcurrent = options.maxConcurrent ?? 0;
+    this.activeCount = 0;
+    /** @type {Array<() => void>} */
+    this.concurrencyWaiters = [];
+
     this.pacedMethods = options.methods
       ? new Set(options.methods)
       : DEFAULT_PACED_METHODS;
 
-    /** @type {Map<string|number, { lastDispatch: number, queue: Array<() => void>, running: boolean }>} */
+    /** @type {Map<string|number, number>} Bounded chat last dispatch timestamps */
+    this.chatLastDispatch = new Map();
+
+    /** @type {Map<string|number, { queue: Array<() => void>, running: boolean }>} */
     this.queues = new Map();
+  }
+
+  /**
+   * Acquires a concurrency slot if maxConcurrent is enforced.
+   * @private
+   */
+  async _acquireSlot() {
+    if (this.maxConcurrent > 0 && this.activeCount >= this.maxConcurrent) {
+      await new Promise((resolve) => this.concurrencyWaiters.push(resolve));
+    }
+    this.activeCount++;
+  }
+
+  /**
+   * Releases a concurrency slot and notifies waiters.
+   * @private
+   */
+  _releaseSlot() {
+    this.activeCount--;
+    if (this.concurrencyWaiters.length > 0) {
+      const nextWaiter = this.concurrencyWaiters.shift();
+      nextWaiter?.();
+    }
   }
 
   /**
@@ -1064,18 +1123,23 @@ export class ChatPacer {
    * @returns {Promise<T>}
    */
   async enqueue(chatId, callFn) {
-    // If no chatId is associated, execute subject only to global rate pacing
+    // If no chatId is associated, execute subject only to global rate pacing and maxConcurrent
     if (chatId === null || chatId === undefined) {
       const globalDelay = this.globalTokenBucket.acquireDelay();
       if (globalDelay > 0) {
         await new Promise((r) => setTimeout(r, globalDelay));
       }
-      return callFn();
+      await this._acquireSlot();
+      try {
+        return await callFn();
+      } finally {
+        this._releaseSlot();
+      }
     }
 
     let chatEntry = this.queues.get(chatId);
     if (!chatEntry) {
-      chatEntry = { lastDispatch: 0, queue: [], running: false };
+      chatEntry = { queue: [], running: false };
       this.queues.set(chatId, chatEntry);
     }
 
@@ -1086,7 +1150,8 @@ export class ChatPacer {
           const now = Date.now();
           const isGroup = isGroupChatId(chatId);
           const minInterval = isGroup ? this.minGroupChatIntervalMs : this.minPrivateChatIntervalMs;
-          const chatElapsed = now - chatEntry.lastDispatch;
+          const lastDispatch = this.chatLastDispatch.get(chatId) || 0;
+          const chatElapsed = now - lastDispatch;
           const chatDelay = Math.max(0, minInterval - chatElapsed);
 
           // 2. Calculate global bucket required wait
@@ -1097,9 +1162,14 @@ export class ChatPacer {
             await new Promise((r) => setTimeout(r, totalDelay));
           }
 
-          chatEntry.lastDispatch = Date.now();
-          const result = await callFn();
-          resolve(result);
+          await this._acquireSlot();
+          try {
+            this.chatLastDispatch.set(chatId, Date.now());
+            const result = await callFn();
+            resolve(result);
+          } finally {
+            this._releaseSlot();
+          }
         } catch (err) {
           reject(err);
         }
@@ -1127,6 +1197,16 @@ export class ChatPacer {
     entry.running = false;
     if (entry.queue.length === 0) {
       this.queues.delete(chatId);
+    }
+
+    // Opportunistically prune old chatLastDispatch timestamps
+    if (this.chatLastDispatch.size > 5000) {
+      const cutoff = Date.now() - 60000;
+      for (const [id, ts] of this.chatLastDispatch.entries()) {
+        if (ts < cutoff) {
+          this.chatLastDispatch.delete(id);
+        }
+      }
     }
   }
 
@@ -1565,9 +1645,12 @@ export class MediaGroupAggregator {
 
           try {
             await batch.next();
-          } finally {
-            for (const res of batch.resolvers) {
-              res();
+            for (let i = 0; i < batch.waiters.length; i++) {
+              batch.waiters[i].resolve();
+            }
+          } catch (err) {
+            for (let i = 0; i < batch.waiters.length; i++) {
+              batch.waiters[i].reject(err);
             }
           }
         }, this.timeout);
@@ -1576,7 +1659,7 @@ export class MediaGroupAggregator {
       if (!batch) {
         batch = {
           contexts: [ctx],
-          resolvers: [],
+          waiters: [],
           firstCtx: ctx,
           next,
           timer: null,
@@ -1585,8 +1668,8 @@ export class MediaGroupAggregator {
         this.batches.set(mediaGroupId, batch);
         scheduleFlush();
 
-        return new Promise((resolve) => {
-          batch.resolvers.push(resolve);
+        return new Promise((resolve, reject) => {
+          batch.waiters.push({ resolve, reject });
         });
       }
 
@@ -1594,8 +1677,8 @@ export class MediaGroupAggregator {
       batch.contexts.push(ctx);
       scheduleFlush();
 
-      return new Promise((resolve) => {
-        batch.resolvers.push(resolve);
+      return new Promise((resolve, reject) => {
+        batch.waiters.push({ resolve, reject });
       });
     };
   }
@@ -2308,6 +2391,16 @@ export class MemoryRateLimitStore {
     }
 
     timestamps.push(now);
+
+    // Opportunistic memory cleanup if map grows large
+    if (this.storage.size > 1000) {
+      for (const [k, ts] of this.storage.entries()) {
+        if (ts.length === 0 || ts[ts.length - 1] <= windowStart) {
+          this.storage.delete(k);
+        }
+      }
+    }
+
     return {
       ok: true,
       remaining: limit - timestamps.length,
@@ -2331,11 +2424,17 @@ export class MemoryRateLimitStore {
 
 /**
  * Standard key resolvers for rate limiting.
+ * Safely handles numeric ID 0.
  */
 export const RateLimitKey = {
-  byUser: (ctx) => (ctx.userId ? `user:${ctx.userId}` : null),
-  byChat: (ctx) => (ctx.chatId ? `chat:${ctx.chatId}` : null),
-  byChatUser: (ctx) => (ctx.chatId && ctx.userId ? `chat_user:${ctx.chatId}:${ctx.userId}` : null),
+  byUser: (ctx) => (ctx.userId !== null && ctx.userId !== undefined ? `user:${ctx.userId}` : null),
+  byChat: (ctx) => (ctx.chatId !== null && ctx.chatId !== undefined ? `chat:${ctx.chatId}` : null),
+  byChatUser: (ctx) => (
+    ctx.chatId !== null && ctx.chatId !== undefined &&
+    ctx.userId !== null && ctx.userId !== undefined
+      ? `chat_user:${ctx.chatId}:${ctx.userId}`
+      : null
+  ),
 };
 
 /**
@@ -2359,9 +2458,9 @@ export function rateLimit(options = {}) {
 
   const defaultOnLimitReached = async (ctx, { retryAfterMs }) => {
     const secs = Math.ceil(retryAfterMs / 1000);
-    if (ctx.data !== null) {
+    if (ctx.data != null && typeof ctx.answer === 'function') {
       await ctx.answer(`Too fast! Please wait ${secs}s.`, { show_alert: true });
-    } else {
+    } else if (typeof ctx.reply === 'function') {
       await ctx.reply(`⚠️ Slow down! Please wait ${secs} second${secs > 1 ? 's' : ''} before trying again.`);
     }
   };
@@ -2607,33 +2706,65 @@ export function createEndpoint(config, handler) {
 
 /**
  * Standard key resolvers.
+ * Safely handles numeric ID 0.
  */
 export const SessionKey = {
-  byUser: (ctx) => (ctx.userId ? `user:${ctx.userId}` : null),
-  byChat: (ctx) => (ctx.chatId ? `chat:${ctx.chatId}` : null),
-  byChatUser: (ctx) => (ctx.chatId && ctx.userId ? `chat_user:${ctx.chatId}:${ctx.userId}` : null),
+  byUser: (ctx) => (ctx.userId !== null && ctx.userId !== undefined ? `user:${ctx.userId}` : null),
+  byChat: (ctx) => (ctx.chatId !== null && ctx.chatId !== undefined ? `chat:${ctx.chatId}` : null),
+  byChatUser: (ctx) => (
+    ctx.chatId !== null && ctx.chatId !== undefined &&
+    ctx.userId !== null && ctx.userId !== undefined
+      ? `chat_user:${ctx.chatId}:${ctx.userId}`
+      : null
+  ),
 };
+
+/**
+ * Safe deep clone helper with structuredClone and JSON fallback.
+ * Preserves Date, Set, Map, and BigInt when structuredClone is available.
+ * @param {any} data
+ * @returns {any}
+ */
+export function safeClone(data) {
+  if (data === undefined || data === null) return data;
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(data);
+    } catch {
+      // Fallback for non-cloneable objects
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(data));
+  } catch {
+    return data;
+  }
+}
 
 /**
  * In-memory session store for local development, testing, and ephemeral states.
  */
 export class MemorySessionStore {
   constructor() {
-    /** @type {Map<string, { data: any, updatedAt: number }>} */
+    /** @type {Map<string, { data: any, updatedAt: number, version: number }>} */
     this.storage = new Map();
   }
 
   async get(key) {
     const entry = this.storage.get(key);
     if (!entry) return null;
-    // Return deep clone to ensure isolation
-    return JSON.parse(JSON.stringify(entry.data));
+    return safeClone(entry.data);
   }
 
-  async set(key, data) {
+  async set(key, data, options = {}) {
+    const prev = this.storage.get(key);
+    if (options.expectedVersion !== undefined && prev && prev.version !== options.expectedVersion) {
+      throw new SessionConflictError(`Concurrent modification detected for session key ${key}`);
+    }
     this.storage.set(key, {
-      data: JSON.parse(JSON.stringify(data)),
+      data: safeClone(data),
       updatedAt: Date.now(),
+      version: (prev?.version || 0) + 1,
     });
   }
 
@@ -2655,11 +2786,13 @@ export class TgCloudSessionStore {
    * @param {any} options.db The db client from `import { db } from 'sdk'`
    * @param {any} options.table The table declaration from `schema.js`
    * @param {any} options.eq The `eq` operator from `sdk/db`
+   * @param {any} [options.and] Optional `and` operator from `sdk/db`
    */
-  constructor({ db, table, eq }) {
+  constructor({ db, table, eq, and }) {
     this.db = db;
     this.table = table;
     this.eq = eq;
+    this.and = and;
   }
 
   async get(key) {
@@ -2670,28 +2803,47 @@ export class TgCloudSessionStore {
         .where(this.eq(this.table.id, key))
         .get();
 
-      return row?.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : null;
+      if (!row) return null;
+      return row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : null;
     } catch (err) {
       throw new SessionError(`Failed to read session for key ${key}: ${err.message}`, { cause: err });
     }
   }
 
-  async set(key, data) {
+  async set(key, data, options = {}) {
     try {
+      // Optimistic concurrency check when schema includes version
+      if (options.expectedVersion !== undefined && this.table.version && this.and) {
+        const result = await this.db
+          .update(this.table)
+          .set({
+            data: typeof data === 'object' ? JSON.stringify(data) : data,
+            version: options.expectedVersion + 1,
+          })
+          .where(this.and(this.eq(this.table.id, key), this.eq(this.table.version, options.expectedVersion)))
+          .run();
+
+        if (result && result.changes === 0) {
+          throw new SessionConflictError(`Concurrent modification detected for session key ${key}`);
+        }
+        return;
+      }
+
       await this.db
         .insert(this.table)
         .values({
           id: key,
-          data: data,
+          data: typeof data === 'object' ? JSON.stringify(data) : data,
         })
         .onConflictDoUpdate({
           target: this.table.id,
           set: {
-            data: data,
+            data: typeof data === 'object' ? JSON.stringify(data) : data,
           },
         })
         .run();
     } catch (err) {
+      if (err instanceof SessionError) throw err;
       throw new SessionError(`Failed to persist session for key ${key}: ${err.message}`, { cause: err });
     }
   }
@@ -2774,10 +2926,10 @@ export function session(options = {}) {
     return mutex.acquire(key, async () => {
       // 1. Fetch current committed state
       const savedData = await store.get(key);
-      const originalSnapshot = savedData ? JSON.stringify(savedData) : null;
+      const originalSnapshot = safeClone(savedData);
 
       // 2. Working copy for handler execution
-      let workingCopy = savedData !== null ? savedData : initial();
+      let workingCopy = savedData !== null ? safeClone(savedData) : initial();
       ctx.session = workingCopy;
 
       try {
@@ -2789,15 +2941,16 @@ export function session(options = {}) {
           // Explicitly cleared session
           await store.delete(key);
         } else {
-          const currentSnapshot = JSON.stringify(ctx.session);
+          const originalSnapshotStr = JSON.stringify(originalSnapshot);
+          const currentSnapshotStr = JSON.stringify(ctx.session);
           // Only write to store if state actually changed
-          if (currentSnapshot !== originalSnapshot) {
+          if (currentSnapshotStr !== originalSnapshotStr) {
             await store.set(key, ctx.session);
           }
         }
       } catch (err) {
         // 5. On handler ERROR / PANIC: Automatic Rollback!
-        ctx.session = originalSnapshot ? JSON.parse(originalSnapshot) : initial();
+        ctx.session = originalSnapshot !== null ? safeClone(originalSnapshot) : initial();
         throw err;
       }
     });
@@ -3855,6 +4008,37 @@ export class GramlessRouter {
   }
 
   /**
+   * Pre-compiles the middleware and router execution pipeline ahead of time.
+   * Eliminates pipeline compilation overhead during request dispatch.
+   * @returns {this}
+   */
+  compile() {
+    this._compiledPipeline = composeMiddleware(this.middlewares, async (c) => {
+      const handled = await this._dispatch(c);
+      if (handled) return true;
+
+      // Check sub-routers
+      for (const sub of this.subRouters) {
+        const subHandled = await sub.handle(c, c.platform, c.api);
+        if (subHandled) return true;
+      }
+
+      // Fallback
+      if (this.fallbackHandler) {
+        await this.fallbackHandler(c);
+        return true;
+      }
+
+      return false;
+    });
+    this._isCompiled = true;
+    for (const sub of this.subRouters) {
+      sub.compile();
+    }
+    return this;
+  }
+
+  /**
    * Core dispatch: Routes an incoming update payload to matching handler.
    * 
    * @param {Record<string, any>} input Unwrapped Telegram payload
@@ -3874,24 +4058,7 @@ export class GramlessRouter {
     }
 
     if (!this._compiledPipeline) {
-      this._compiledPipeline = composeMiddleware(this.middlewares, async (c) => {
-        const handled = await this._dispatch(c);
-        if (handled) return true;
-
-        // Check sub-routers
-        for (const sub of this.subRouters) {
-          const subHandled = await sub.handle(c, ctx, effectiveApi);
-          if (subHandled) return true;
-        }
-
-        // Fallback
-        if (this.fallbackHandler) {
-          await this.fallbackHandler(c);
-          return true;
-        }
-
-        return false;
-      });
+      this.compile();
     }
 
     try {
@@ -4072,7 +4239,7 @@ export class GramlessRouter {
   /**
    * Generates a standard Telegram Serverless default export handler.
    * Usage in tgcloud/handlers/message.js:
-   *   
+   *   export default bot.handler();
    * 
    * @returns {Function}
    */
@@ -4102,7 +4269,7 @@ export class GramlessRouter {
    *   in the HTTP 200 response JSON, eliminating 100% of outbound roundtrip latency.
    * 
    * Usage:
-   *   ) };
+   *   export default { fetch: bot.fetch({ secretToken: 'secret', webhookReply: true }) };
    * 
    * @param {Object} [options={}]
    * @param {string} [options.secretToken] Secret token to verify
@@ -4111,6 +4278,7 @@ export class GramlessRouter {
    * @returns {(request: any, env?: any, ctx?: any) => Promise<any>}
    */
   fetch(options = {}) {
+    this.compile();
     const secretToken = options.secretToken || null;
     const enableWebhookReply = options.webhookReply === true;
 
@@ -4140,6 +4308,13 @@ export class GramlessRouter {
         payload = await request.json();
       } catch {
         return new Response('Bad Request: Invalid JSON body', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+
+      if (!payload || typeof payload !== 'object') {
+        return new Response('Bad Request: Empty or invalid payload', {
           status: 400,
           headers: { 'Content-Type': 'text/plain' },
         });
@@ -4331,6 +4506,7 @@ export class GramlessRouter {
    * @returns {(req: any, res: any) => Promise<void>}
    */
   webhookCallback(options = {}) {
+    this.compile();
     const secretToken = options.secretToken || null;
 
     return async (req, res) => {
@@ -4358,9 +4534,21 @@ export class GramlessRouter {
         }
       }
 
-      // 3. Parse request body (if not already parsed by express.json() / body-parser)
+      // 3. Parse request body (if string or not already parsed by express.json() / body-parser)
       let body = req.body;
-      if (!body) {
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          if (res.status && typeof res.status === 'function') {
+            return res.status(400).send('Bad Request: Invalid JSON body');
+          } else if (res.writeHead) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            return res.end('Bad Request: Invalid JSON body');
+          }
+          return;
+        }
+      } else if (!body) {
         try {
           body = await new Promise((resolve, reject) => {
             const chunks = [];
@@ -4384,6 +4572,16 @@ export class GramlessRouter {
           }
           return;
         }
+      }
+
+      if (!body || typeof body !== 'object') {
+        if (res.status && typeof res.status === 'function') {
+          return res.status(400).send('Bad Request: Empty or invalid payload');
+        } else if (res.writeHead) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          return res.end('Bad Request: Empty or invalid payload');
+        }
+        return;
       }
 
       // 4. Dispatch to router
@@ -4508,7 +4706,7 @@ function compilePattern(pattern) {
   const paramNames = [];
   const regexStr = pattern.replace(/:([a-zA-Z0-9_]+)/g, (_, name) => {
     paramNames.push(name);
-    return '([^\\s_]+)';
+    return '([a-zA-Z0-9_.-]+)';
   });
 
   return {
@@ -4530,7 +4728,7 @@ export class DeepLinkRouter {
    * Supports exact strings, ':param' wildcards (e.g. 'ref_:id'), or RegExp.
    * 
    * @param {string|RegExp} pattern
-   * @param {Function} handler async (ctx) => void
+   * @param {Function} handler async (ctx, next?) => void
    * @returns {this}
    */
   on(pattern, handler) {
@@ -4541,7 +4739,7 @@ export class DeepLinkRouter {
 
   /**
    * Registers a fallback handler when a start command has a payload that matched no patterns.
-   * @param {Function} handler
+   * @param {Function} handler async (ctx, next?) => void
    * @returns {this}
    */
   fallback(handler) {
@@ -4587,13 +4785,13 @@ export class DeepLinkRouter {
             }
           }
 
-          await handler(ctx);
+          await handler(ctx, next);
           return;
         }
       }
 
       if (this.fallbackHandler) {
-        await this.fallbackHandler(ctx);
+        await this.fallbackHandler(ctx, next);
         return;
       }
 
@@ -4764,7 +4962,7 @@ export class FsmMachine {
       }
 
       // Execute active step
-      await activeStep.handler(ctx);
+      await activeStep.handler(ctx, next);
     };
   }
 }

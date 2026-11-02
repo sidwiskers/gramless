@@ -71,7 +71,7 @@ function compilePattern(pattern) {
   const paramNames = [];
   const regexStr = pattern.replace(/:([a-zA-Z0-9_]+)/g, (_, name) => {
     paramNames.push(name);
-    return '([^\\s_]+)';
+    return '([a-zA-Z0-9_.-]+)';
   });
 
   return {
@@ -93,7 +93,7 @@ export class DeepLinkRouter {
    * Supports exact strings, ':param' wildcards (e.g. 'ref_:id'), or RegExp.
    * 
    * @param {string|RegExp} pattern
-   * @param {Function} handler async (ctx) => void
+   * @param {Function} handler async (ctx, next?) => void
    * @returns {this}
    */
   on(pattern, handler) {
@@ -104,7 +104,7 @@ export class DeepLinkRouter {
 
   /**
    * Registers a fallback handler when a start command has a payload that matched no patterns.
-   * @param {Function} handler
+   * @param {Function} handler async (ctx, next?) => void
    * @returns {this}
    */
   fallback(handler) {
@@ -150,13 +150,13 @@ export class DeepLinkRouter {
             }
           }
 
-          await handler(ctx);
+          await handler(ctx, next);
           return;
         }
       }
 
       if (this.fallbackHandler) {
-        await this.fallbackHandler(ctx);
+        await this.fallbackHandler(ctx, next);
         return;
       }
 

@@ -286,6 +286,37 @@ export class GramlessRouter {
   }
 
   /**
+   * Pre-compiles the middleware and router execution pipeline ahead of time.
+   * Eliminates pipeline compilation overhead during request dispatch.
+   * @returns {this}
+   */
+  compile() {
+    this._compiledPipeline = composeMiddleware(this.middlewares, async (c) => {
+      const handled = await this._dispatch(c);
+      if (handled) return true;
+
+      // Check sub-routers
+      for (const sub of this.subRouters) {
+        const subHandled = await sub.handle(c, c.platform, c.api);
+        if (subHandled) return true;
+      }
+
+      // Fallback
+      if (this.fallbackHandler) {
+        await this.fallbackHandler(c);
+        return true;
+      }
+
+      return false;
+    });
+    this._isCompiled = true;
+    for (const sub of this.subRouters) {
+      sub.compile();
+    }
+    return this;
+  }
+
+  /**
    * Core dispatch: Routes an incoming update payload to matching handler.
    * 
    * @param {Record<string, any>} input Unwrapped Telegram payload
@@ -305,24 +336,7 @@ export class GramlessRouter {
     }
 
     if (!this._compiledPipeline) {
-      this._compiledPipeline = composeMiddleware(this.middlewares, async (c) => {
-        const handled = await this._dispatch(c);
-        if (handled) return true;
-
-        // Check sub-routers
-        for (const sub of this.subRouters) {
-          const subHandled = await sub.handle(c, ctx, effectiveApi);
-          if (subHandled) return true;
-        }
-
-        // Fallback
-        if (this.fallbackHandler) {
-          await this.fallbackHandler(c);
-          return true;
-        }
-
-        return false;
-      });
+      this.compile();
     }
 
     try {
@@ -542,6 +556,7 @@ export class GramlessRouter {
    * @returns {(request: any, env?: any, ctx?: any) => Promise<any>}
    */
   fetch(options = {}) {
+    this.compile();
     const secretToken = options.secretToken || null;
     const enableWebhookReply = options.webhookReply === true;
 
@@ -571,6 +586,13 @@ export class GramlessRouter {
         payload = await request.json();
       } catch {
         return new Response('Bad Request: Invalid JSON body', {
+          status: 400,
+          headers: { 'Content-Type': 'text/plain' },
+        });
+      }
+
+      if (!payload || typeof payload !== 'object') {
+        return new Response('Bad Request: Empty or invalid payload', {
           status: 400,
           headers: { 'Content-Type': 'text/plain' },
         });
@@ -762,6 +784,7 @@ export class GramlessRouter {
    * @returns {(req: any, res: any) => Promise<void>}
    */
   webhookCallback(options = {}) {
+    this.compile();
     const secretToken = options.secretToken || null;
 
     return async (req, res) => {
@@ -789,9 +812,21 @@ export class GramlessRouter {
         }
       }
 
-      // 3. Parse request body (if not already parsed by express.json() / body-parser)
+      // 3. Parse request body (if string or not already parsed by express.json() / body-parser)
       let body = req.body;
-      if (!body) {
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          if (res.status && typeof res.status === 'function') {
+            return res.status(400).send('Bad Request: Invalid JSON body');
+          } else if (res.writeHead) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            return res.end('Bad Request: Invalid JSON body');
+          }
+          return;
+        }
+      } else if (!body) {
         try {
           body = await new Promise((resolve, reject) => {
             const chunks = [];
@@ -815,6 +850,16 @@ export class GramlessRouter {
           }
           return;
         }
+      }
+
+      if (!body || typeof body !== 'object') {
+        if (res.status && typeof res.status === 'function') {
+          return res.status(400).send('Bad Request: Empty or invalid payload');
+        } else if (res.writeHead) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          return res.end('Bad Request: Empty or invalid payload');
+        }
+        return;
       }
 
       // 4. Dispatch to router

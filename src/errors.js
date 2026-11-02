@@ -4,7 +4,7 @@
  * Provides structured, typed errors with token and credential sanitization.
  */
 
-const TOKEN_PATTERN = /(?:bot)?\d{5,16}:[A-Za-z0-9_-]{20,50}/g;
+const TOKEN_PATTERN = /(?:bot)?\d{5,16}:[A-Za-z0-9_-]{10,60}/g;
 
 /**
  * Sanitizes strings, removing any Telegram bot tokens or sensitive credentials.
@@ -45,15 +45,16 @@ export class ApiError extends GramlessError {
    * @param {Record<string, unknown>} [parameters={}]
    */
   constructor(method, description, errorCode = 400, parameters = {}) {
-    super(`Telegram API call ${method} failed (${errorCode}): ${description}`, 'API_ERROR', {
+    const cleanDesc = sanitizeString(description);
+    super(`Telegram API call ${method} failed (${errorCode}): ${cleanDesc}`, 'API_ERROR', {
       method,
       errorCode,
-      description,
+      description: cleanDesc,
       parameters,
     });
     this.method = method;
     this.errorCode = errorCode;
-    this.description = description;
+    this.description = cleanDesc;
     this.parameters = parameters;
   }
 
@@ -94,6 +95,7 @@ export class ApiError extends GramlessError {
     if (this.isQueryTooOld) return 'QUERY_TOO_OLD';
     if (this.isRateLimited) return 'RATE_LIMITED';
     if (this.isTopicClosed) return 'TOPIC_CLOSED';
+    if (this.isParseEntityError) return 'PARSE_ENTITY_ERROR';
     if (this.isMediaRestricted) return 'MEDIA_RESTRICTED';
     return 'UNKNOWN';
   }
@@ -158,9 +160,16 @@ export class ApiError extends GramlessError {
     return /message thread not found|TOPIC_CLOSED|TOPIC_DELETED/i.test(this.description);
   }
 
+  /** True if entity parsing (Markdown/HTML tags) failed */
+  get isParseEntityError() {
+    return this.errorCode === 400 && /can't parse entities|entity_parse_failed/i.test(this.description);
+  }
+
   /** True if media upload failed due to size, format, or chat media restrictions */
   get isMediaRestricted() {
-    return /wrong file identifier|file is too big|can't parse entities|photo|media|document/i.test(this.description) && (this.errorCode === 400 || this.errorCode === 403);
+    return (this.errorCode === 400 || this.errorCode === 403) &&
+      !this.isParseEntityError &&
+      /wrong file identifier|file is too big|failed to get HTTP URL content|IMAGE_PROCESS_FAILED|PHOTO_INVALID_DIMENSIONS|wrong type of the specified file|MEDIA_CAPTION_TOO_LONG|chat doesn't allow media messages|MEDIA_RESTRICTED/i.test(this.description);
   }
 }
 
@@ -203,6 +212,15 @@ export function isNotFoundError(err) {
 }
 
 /**
+ * Checks if an error was caused by an entity or formatting parse error (e.g. invalid HTML or Markdown).
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isParseEntityError(err) {
+  return err instanceof ApiError ? err.isParseEntityError : false;
+}
+
+/**
  * Thrown when input validation fails (e.g. in RPC endpoints or route parameters).
  */
 export class ValidationError extends GramlessError {
@@ -231,6 +249,16 @@ export class RoutingError extends GramlessError {
 export class SessionError extends GramlessError {
   constructor(message, details = {}) {
     super(message, 'SESSION_ERROR', details);
+  }
+}
+
+/**
+ * Thrown when an optimistic concurrency conflict occurs during session commit.
+ */
+export class SessionConflictError extends SessionError {
+  constructor(message = 'Session state conflict: concurrent update detected', details = {}) {
+    super(message, { code: 'SESSION_CONFLICT', ...details });
+    this.code = 'SESSION_CONFLICT';
   }
 }
 

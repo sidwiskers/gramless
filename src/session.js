@@ -6,37 +6,69 @@
  * resolves successfully; any uncaught throw or API error aborts and rolls back changes.
  */
 
-import { SessionError } from './errors.js';
+import { SessionError, SessionConflictError } from './errors.js';
 
 /**
  * Standard key resolvers.
+ * Safely handles numeric ID 0.
  */
 export const SessionKey = {
-  byUser: (ctx) => (ctx.userId ? `user:${ctx.userId}` : null),
-  byChat: (ctx) => (ctx.chatId ? `chat:${ctx.chatId}` : null),
-  byChatUser: (ctx) => (ctx.chatId && ctx.userId ? `chat_user:${ctx.chatId}:${ctx.userId}` : null),
+  byUser: (ctx) => (ctx.userId !== null && ctx.userId !== undefined ? `user:${ctx.userId}` : null),
+  byChat: (ctx) => (ctx.chatId !== null && ctx.chatId !== undefined ? `chat:${ctx.chatId}` : null),
+  byChatUser: (ctx) => (
+    ctx.chatId !== null && ctx.chatId !== undefined &&
+    ctx.userId !== null && ctx.userId !== undefined
+      ? `chat_user:${ctx.chatId}:${ctx.userId}`
+      : null
+  ),
 };
+
+/**
+ * Safe deep clone helper with structuredClone and JSON fallback.
+ * Preserves Date, Set, Map, and BigInt when structuredClone is available.
+ * @param {any} data
+ * @returns {any}
+ */
+export function safeClone(data) {
+  if (data === undefined || data === null) return data;
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(data);
+    } catch {
+      // Fallback for non-cloneable objects
+    }
+  }
+  try {
+    return JSON.parse(JSON.stringify(data));
+  } catch {
+    return data;
+  }
+}
 
 /**
  * In-memory session store for local development, testing, and ephemeral states.
  */
 export class MemorySessionStore {
   constructor() {
-    /** @type {Map<string, { data: any, updatedAt: number }>} */
+    /** @type {Map<string, { data: any, updatedAt: number, version: number }>} */
     this.storage = new Map();
   }
 
   async get(key) {
     const entry = this.storage.get(key);
     if (!entry) return null;
-    // Return deep clone to ensure isolation
-    return JSON.parse(JSON.stringify(entry.data));
+    return safeClone(entry.data);
   }
 
-  async set(key, data) {
+  async set(key, data, options = {}) {
+    const prev = this.storage.get(key);
+    if (options.expectedVersion !== undefined && prev && prev.version !== options.expectedVersion) {
+      throw new SessionConflictError(`Concurrent modification detected for session key ${key}`);
+    }
     this.storage.set(key, {
-      data: JSON.parse(JSON.stringify(data)),
+      data: safeClone(data),
       updatedAt: Date.now(),
+      version: (prev?.version || 0) + 1,
     });
   }
 
@@ -58,11 +90,13 @@ export class TgCloudSessionStore {
    * @param {any} options.db The db client from `import { db } from 'sdk'`
    * @param {any} options.table The table declaration from `schema.js`
    * @param {any} options.eq The `eq` operator from `sdk/db`
+   * @param {any} [options.and] Optional `and` operator from `sdk/db`
    */
-  constructor({ db, table, eq }) {
+  constructor({ db, table, eq, and }) {
     this.db = db;
     this.table = table;
     this.eq = eq;
+    this.and = and;
   }
 
   async get(key) {
@@ -73,28 +107,47 @@ export class TgCloudSessionStore {
         .where(this.eq(this.table.id, key))
         .get();
 
-      return row?.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : null;
+      if (!row) return null;
+      return row.data ? (typeof row.data === 'string' ? JSON.parse(row.data) : row.data) : null;
     } catch (err) {
       throw new SessionError(`Failed to read session for key ${key}: ${err.message}`, { cause: err });
     }
   }
 
-  async set(key, data) {
+  async set(key, data, options = {}) {
     try {
+      // Optimistic concurrency check when schema includes version
+      if (options.expectedVersion !== undefined && this.table.version && this.and) {
+        const result = await this.db
+          .update(this.table)
+          .set({
+            data: typeof data === 'object' ? JSON.stringify(data) : data,
+            version: options.expectedVersion + 1,
+          })
+          .where(this.and(this.eq(this.table.id, key), this.eq(this.table.version, options.expectedVersion)))
+          .run();
+
+        if (result && result.changes === 0) {
+          throw new SessionConflictError(`Concurrent modification detected for session key ${key}`);
+        }
+        return;
+      }
+
       await this.db
         .insert(this.table)
         .values({
           id: key,
-          data: data,
+          data: typeof data === 'object' ? JSON.stringify(data) : data,
         })
         .onConflictDoUpdate({
           target: this.table.id,
           set: {
-            data: data,
+            data: typeof data === 'object' ? JSON.stringify(data) : data,
           },
         })
         .run();
     } catch (err) {
+      if (err instanceof SessionError) throw err;
       throw new SessionError(`Failed to persist session for key ${key}: ${err.message}`, { cause: err });
     }
   }
@@ -177,10 +230,10 @@ export function session(options = {}) {
     return mutex.acquire(key, async () => {
       // 1. Fetch current committed state
       const savedData = await store.get(key);
-      const originalSnapshot = savedData ? JSON.stringify(savedData) : null;
+      const originalSnapshot = safeClone(savedData);
 
       // 2. Working copy for handler execution
-      let workingCopy = savedData !== null ? savedData : initial();
+      let workingCopy = savedData !== null ? safeClone(savedData) : initial();
       ctx.session = workingCopy;
 
       try {
@@ -192,15 +245,16 @@ export function session(options = {}) {
           // Explicitly cleared session
           await store.delete(key);
         } else {
-          const currentSnapshot = JSON.stringify(ctx.session);
+          const originalSnapshotStr = JSON.stringify(originalSnapshot);
+          const currentSnapshotStr = JSON.stringify(ctx.session);
           // Only write to store if state actually changed
-          if (currentSnapshot !== originalSnapshot) {
+          if (currentSnapshotStr !== originalSnapshotStr) {
             await store.set(key, ctx.session);
           }
         }
       } catch (err) {
         // 5. On handler ERROR / PANIC: Automatic Rollback!
-        ctx.session = originalSnapshot ? JSON.parse(originalSnapshot) : initial();
+        ctx.session = originalSnapshot !== null ? safeClone(originalSnapshot) : initial();
         throw err;
       }
     });
