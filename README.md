@@ -63,7 +63,7 @@ Writing raw handlers directly on the platform requires implementing manual comma
 | **Callback Query Dispatch** | String splitting | Regex scan | **$O(1)$ Hash Map & Prefix Index (0.92 µs)** |
 | **Session Persistence** | Manual SQL queries | In-memory / external cache | **ACID SQLite with automatic rollback** |
 | **Bot API Methods** | Raw `api.*` proxy | Custom wrappers | **Typed Context facade + direct `ctx.call`** |
-| **Offline Testing** | Cloud deployment | Mocking libraries | **In-memory test lab (`gramless/lab`)** |
+| **Offline Testing** | Cloud deployment | Mocking libraries | **In-memory test lab (`gramless/testkit`)** |
 | **Mini App Endpoints** | Raw HTTP POST | External web server | **Built-in `createEndpoint`** |
 | **TypeScript Support** | None | `@types/*` packages | **Built-in `types/index.d.ts`** |
 
