@@ -1,0 +1,5 @@
+{
+  "$schema": "https://tgcloud.ai/schema.json",
+  "name": "telegram-mini-app-fullstack",
+  "static": "public"
+}

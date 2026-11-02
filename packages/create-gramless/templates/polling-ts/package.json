@@ -1,0 +1,18 @@
+{
+  "name": "node-long-polling-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency Telegram bot with long polling on Node.js using Gramless (TypeScript)",
+  "scripts": {
+    "start": "node --env-file=.env --experimental-strip-types index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "gramless": "^1.3.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

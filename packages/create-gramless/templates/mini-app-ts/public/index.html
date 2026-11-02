@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Mini App Leaderboard</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background-color: var(--tg-theme-bg-color, #ffffff);
+      color: var(--tg-theme-text-color, #222222);
+      text-align: center;
+    }
+    button {
+      background-color: var(--tg-theme-button-color, #2481cc);
+      color: var(--tg-theme-button-text-color, #ffffff);
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      margin: 12px 0;
+    }
+    .score-display {
+      font-size: 48px;
+      font-weight: 700;
+      margin: 20px 0;
+    }
+    ol {
+      text-align: left;
+      padding-left: 20px;
+      max-width: 320px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Clicker Challenge</h1>
+  <div class="score-display" id="score">0</div>
+  <button id="tap-btn">Tap to Score +10</button>
+  <br>
+  <button id="save-btn" style="background-color: #2da44e;">Submit Score</button>
+
+  <h2>Top Scores</h2>
+  <ol id="leaderboard-list">
+    <li>Loading...</li>
+  </ol>
+
+  <script src="app.js"></script>
+</body>
+</html>

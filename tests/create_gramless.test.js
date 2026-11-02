@@ -18,11 +18,13 @@ describe('create-gramless CLI Scaffolder', () => {
     }
   });
 
-  test('scaffolds Telegram Serverless (tgcloud) template', () => {
+  test('scaffolds Telegram Serverless (tgcloud) JavaScript template', () => {
     const target = path.join(testScratchDir, 'my-tgcloud-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--yes']);
+    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--js', '--yes']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
+    assert.ok(fs.existsSync(path.join(target, '.gitignore')));
+    assert.ok(!fs.existsSync(path.join(target, '_gitignore')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud.jsonc')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud/lib/bot.js')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud/handlers/message.js')));
@@ -32,28 +34,45 @@ describe('create-gramless CLI Scaffolder', () => {
     assert.ok(pkg.dependencies.gramless);
   });
 
-  test('scaffolds Cloudflare Workers template', () => {
-    const target = path.join(testScratchDir, 'my-cf-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'cloudflare', '--yes']);
+  test('scaffolds Telegram Serverless (tgcloud) TypeScript template', () => {
+    const target = path.join(testScratchDir, 'my-tgcloud-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'tgcloud', '--ts', '--yes']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
-    assert.ok(fs.existsSync(path.join(target, 'wrangler.jsonc')));
-    assert.ok(fs.existsSync(path.join(target, 'src/index.js')));
+    assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
+    assert.ok(fs.existsSync(path.join(target, '.gitignore')));
+    assert.ok(fs.existsSync(path.join(target, 'tgcloud/lib/bot.ts')));
 
     const pkg = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8'));
-    assert.equal(pkg.name, 'my-cf-bot');
+    assert.equal(pkg.name, 'my-tgcloud-ts-bot');
+    assert.ok(pkg.devDependencies.typescript);
   });
 
-  test('scaffolds Node.js Long Polling template', () => {
-    const target = path.join(testScratchDir, 'my-polling-bot');
-    execFileSync(process.execPath, [cliBin, target, '--template', 'polling', '--yes']);
+  test('scaffolds Cloudflare Workers TypeScript template', () => {
+    const target = path.join(testScratchDir, 'my-cf-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'cloudflare', '--ts', '--yes']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
-    assert.ok(fs.existsSync(path.join(target, 'index.js')));
+    assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
+    assert.ok(fs.existsSync(path.join(target, 'wrangler.jsonc')));
+    assert.ok(fs.existsSync(path.join(target, 'src/index.ts')));
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8'));
+    assert.equal(pkg.name, 'my-cf-ts-bot');
+    assert.ok(pkg.devDependencies['@cloudflare/workers-types']);
+  });
+
+  test('scaffolds Node.js Long Polling TypeScript template', () => {
+    const target = path.join(testScratchDir, 'my-polling-ts-bot');
+    execFileSync(process.execPath, [cliBin, target, '--template', 'polling', '--ts', '--yes']);
+
+    assert.ok(fs.existsSync(path.join(target, 'package.json')));
+    assert.ok(fs.existsSync(path.join(target, 'tsconfig.json')));
+    assert.ok(fs.existsSync(path.join(target, 'index.ts')));
     assert.ok(fs.existsSync(path.join(target, '.env.example')));
 
     const pkg = JSON.parse(fs.readFileSync(path.join(target, 'package.json'), 'utf8'));
-    assert.equal(pkg.name, 'my-polling-bot');
+    assert.equal(pkg.name, 'my-polling-ts-bot');
   });
 
   test('scaffolds Fullstack Telegram Mini App template', () => {
@@ -61,6 +80,7 @@ describe('create-gramless CLI Scaffolder', () => {
     execFileSync(process.execPath, [cliBin, target, '--template', 'mini-app', '--yes']);
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
+    assert.ok(fs.existsSync(path.join(target, '.gitignore')));
     assert.ok(fs.existsSync(path.join(target, 'public/index.html')));
     assert.ok(fs.existsSync(path.join(target, 'public/app.js')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud/endpoints/submitScore.js')));

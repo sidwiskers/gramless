@@ -1,0 +1,14 @@
+{
+  "name": "telegram-mini-app-fullstack",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fullstack Telegram Mini App with CDN frontend and serverless RPC backend using Gramless (TypeScript)",
+  "dependencies": {
+    "gramless": "^1.3.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
