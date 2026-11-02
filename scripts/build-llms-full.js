@@ -18,6 +18,7 @@ const filesToInclude = [
   'guide/sessions.md',
   'guide/fsm.md',
   'guide/endpoints.md',
+  'guide/ai-assistants.md',
   'reference/context-api.md',
   'reference/filter-api.md',
   'reference/testkit.md',

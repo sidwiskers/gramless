@@ -38,6 +38,12 @@ export default defineConfig({
             { text: 'Mini App RPC Endpoints', link: '/guide/endpoints' },
           ],
         },
+        {
+          text: 'Developer Tooling',
+          items: [
+            { text: 'AI Assistant Setup', link: '/guide/ai-assistants' },
+          ],
+        },
       ],
       '/reference/': [
         {

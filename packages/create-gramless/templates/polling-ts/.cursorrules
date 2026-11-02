@@ -1,0 +1,120 @@
+# Gramless Development Guidelines for Cursor & AI Assistants
+
+You are an expert Telegram Bot and Mini App developer using **Gramless** (`gramless`), a zero-dependency, transactional Telegram framework for Telegram Serverless (TGCloud), edge V8 isolates (Cloudflare Workers), and Node.js.
+
+## Core Philosophy & Constraints
+- **Zero External Runtime Dependencies:** Always rely on native Node.js / Web APIs (`crypto`, `fetch`, etc.) and the built-in modules of `gramless`. Never introduce third-party libraries (e.g. `axios`, `node-fetch`, `lodash`, `telegraf`, `grammy`).
+- **Sub-Microsecond Dispatch:** Routing is pre-compiled and hash-mapped. Use `bot.command()`, `bot.callbackQuery()`, and `bot.on()`.
+- **ACID Transactional Sessions:** In TGCloud, session state is staged in memory and committed atomically upon successful handler completion. Unhandled errors automatically rollback state.
+- **Strict Typing & Modern Syntax:** Use modern ESM (`import`/`export`) and Node.js 20+ features.
+
+## Primary Imports & Exports
+```javascript
+// Main package
+import { 
+  GramlessRouter, 
+  Filter, 
+  Session, 
+  FSM, 
+  GramlessEndpoint, 
+  v 
+} from 'gramless';
+
+// Safe entity formatting (HTML / MarkdownV2 with auto-escaping)
+import { html, md, fmt } from 'gramless/format';
+
+// Deterministic hermetic testing (offline, zero-network)
+import { GramlessLab } from 'gramless/testkit';
+```
+
+## Runtime Targets
+
+### 1. Telegram Serverless (TGCloud)
+```javascript
+// tgcloud/lib/bot.js
+import { GramlessRouter } from 'gramless';
+export const bot = new GramlessRouter();
+
+// tgcloud/handlers/message.js
+import { bot } from '../lib/bot.js';
+export default bot.handler();
+```
+
+### 2. Cloudflare Workers / Edge Webhook
+```javascript
+import { GramlessRouter } from 'gramless';
+
+const bot = new GramlessRouter({ token: env.BOT_TOKEN });
+
+export default {
+  async fetch(request, env, ctx) {
+    return bot.fetch(request, {
+      secretToken: env.SECRET_TOKEN,
+      executionCtx: ctx
+    });
+  }
+};
+```
+
+### 3. Node.js Long Polling (Local Dev & VPS)
+```javascript
+import { GramlessRouter } from 'gramless';
+
+const bot = new GramlessRouter({ token: process.env.BOT_TOKEN });
+
+bot.command('start', async (ctx) => {
+  await ctx.reply('Bot started!');
+});
+
+await bot.start();
+```
+
+## Context (`ctx`) Idioms
+- **Sending Messages:** `await ctx.reply('Hello!', { parse_mode: 'HTML' });` (chat_id is inferred automatically).
+- **Photos & Media:** `await ctx.replyWithPhoto(photoUrl, { caption: 'Photo caption' });`
+- **Keyboards:** `await ctx.replyWithKeyboard('Pick an option:', [[{ text: 'Option A', callback_data: 'opt_a' }]]);`
+- **Answering Callbacks:** Always invoke `await ctx.answerCallbackQuery();` to dismiss the loading spinner on Telegram clients.
+- **Direct Bot API Calls:** For any method not wrapped with a helper, call `await ctx.call('methodName', { ...params });`.
+- **Context Properties:** `ctx.chatId`, `ctx.userId`, `ctx.text`, `ctx.from`, `ctx.chat`, `ctx.session`.
+
+## Entity Formatting (`gramless/format`)
+Always use tagged template literals to prevent HTML/Markdown injection attacks:
+```javascript
+import { html, fmt } from 'gramless/format';
+
+// Variables are automatically escaped:
+const message = html`Welcome <b>${ctx.from.first_name}</b>! Visit ${fmt.link('our site', url)}`;
+await ctx.reply(message, { parse_mode: 'HTML' });
+```
+
+## Mini App RPC Endpoints (`GramlessEndpoint`)
+```javascript
+import { GramlessEndpoint, v } from 'gramless';
+
+export default new GramlessEndpoint({
+  botToken: process.env.BOT_TOKEN,
+  schema: {
+    amount: v.number().min(1),
+    item: v.string().min(1)
+  },
+  async handler({ user, data }) {
+    return { ok: true, processedFor: user.id, data };
+  }
+});
+```
+
+## Hermetic Offline Testing (`gramless/testkit`)
+```javascript
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { GramlessLab } from 'gramless/testkit';
+import { bot } from './bot.js';
+
+test('responds to /start command', async () => {
+  const lab = new GramlessLab(bot);
+  const user = lab.createUser({ id: 12345, username: 'alice' });
+  const response = await user.sendsCommand('start');
+
+  assert.equal(response.text, 'Bot started!');
+});
+```

@@ -24,6 +24,7 @@ Gramless is a lightweight, sub-microsecond framework for developing Telegram bot
 - [ACID Sessions](https://sidwiskers.github.io/gramless/guide/sessions): Transactional session rollback and in-process mutex serialization.
 - [Conversation Wizards (FSM)](https://sidwiskers.github.io/gramless/guide/fsm): Multi-turn state machines with validation guards.
 - [Mini App RPC Endpoints](https://sidwiskers.github.io/gramless/guide/endpoints): Serverless RPC bridge with Telegram `initData` authentication and schema validation (`v`).
+- [AI Assistant Setup](https://sidwiskers.github.io/gramless/guide/ai-assistants): Configuring Cursor, Copilot, and LLMs with `.cursorrules` and machine-readable documentation.
 
 ## API Reference
 

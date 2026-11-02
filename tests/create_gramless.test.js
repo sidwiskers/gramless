@@ -39,6 +39,7 @@ describe('create-gramless CLI Scaffolder', () => {
 
     assert.ok(fs.existsSync(path.join(target, 'package.json')));
     assert.ok(fs.existsSync(path.join(target, '.gitignore')));
+    assert.ok(fs.existsSync(path.join(target, '.cursorrules')));
     assert.ok(!fs.existsSync(path.join(target, '_gitignore')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud.jsonc')));
     assert.ok(fs.existsSync(path.join(target, 'tgcloud/lib/bot.js')));
