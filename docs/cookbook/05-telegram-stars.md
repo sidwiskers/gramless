@@ -4,7 +4,7 @@ This recipe shows how to monetize your Telegram bot using native **Telegram Star
 
 ---
 
-## Architectural Problem: The Two-Phase Checkout Lifecycle
+## The Two-Phase Checkout Lifecycle
 
 Telegram's native digital goods payment system requires a strict two-phase handshake:
 1. **Invoice Issuance:** The bot sends an invoice message with `currency: 'XTR'` (the official ISO symbol for Telegram Stars).
@@ -85,7 +85,7 @@ bot.on('successful_payment', async (ctx) => {
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
 - **Provider Token is Empty for Stars:** For traditional credit cards or Stripe payments, Telegram requires a payment provider token. For **Telegram Stars**, leave `provider_token` empty or omitted—Telegram processes Stars natively.
 - **Dedicated Handler for `pre_checkout_query`:** In TGCloud, `pre_checkout_query` updates are routed directly to `tgcloud/handlers/pre_checkout_query.js`. Failing to export a handler for this file will cause checkout attempts to time out.

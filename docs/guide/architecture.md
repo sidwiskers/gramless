@@ -44,7 +44,7 @@ handlers/message.js   handlers/callback_query.js
 
 ---
 
-## Rules That Bite
+## Important Runtime Constraints
 
 - **Relative Imports Require Extensions:** Always write `import { bot } from './lib/bot.js'`. Omitting `.js` will cause module resolution errors in production.
 - **Async Database Calls:** Every query in `sdk/db` must be awaited (`await db.select()...run()`).

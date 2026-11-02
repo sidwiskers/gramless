@@ -4,15 +4,15 @@ This recipe shows how to build a persistent Task Manager bot using Telegram Serv
 
 ---
 
-## Architectural Problem: The Lost Update & Broken State Hazard
+## State Consistency & Transactional Sessions
 
-In a serverless environment, incoming updates trigger separate V8 isolate runs.
-1. **Uncoordinated Database Writes:** Traditional bot frameworks store sessions in RAM or issue uncoordinated `UPDATE` queries. If an outbound Telegram API call fails halfway through (e.g. rate limit, bad file ID), the database is left in a dirty, partially mutated state.
-2. **Foreign Key Pitfall:** TGCloud SQLite has `PRAGMA foreign_keys = OFF`. Declaring `.references()` will throw an error at startup.
+In serverless execution environments, incoming updates trigger separate V8 isolate invocations:
+1. **Uncoordinated Database Writes:** Traditional state stores commit mutations immediately. If an outbound Telegram API call fails halfway through (e.g., due to network interruptions or invalid parameters), external databases can be left in an inconsistent state.
+2. **Foreign Key Support:** TGCloud SQLite operates with `PRAGMA foreign_keys = OFF`. Declaring `.references()` is not supported and throws an error at startup.
 
-### How Gramless Solves This
-- **Transactional Rollback:** When you use `bot.use(session({ store: new TgCloudSessionStore(...) }))`, mutations to `ctx.session` are held in an in-memory staging clone. Only when the handler resolves successfully are changes committed to the SQLite database. If any error or panic occurs, all mutations are discarded.
-- **In-Process Mutex Serialization:** Rapid sequential button clicks from the same user are serialized through `KeyedMutex` to eliminate read-modify-write race conditions.
+### Gramless State Handling
+- **Transactional Rollback:** When using `bot.use(session({ store: new TgCloudSessionStore(...) }))`, mutations to `ctx.session` are held in an in-memory staging copy. Only when the handler resolves successfully are changes committed to the SQLite database. If an unhandled error occurs, staged mutations are discarded.
+- **Mutex Serialization:** Rapid sequential updates from the same user are serialized through `KeyedMutex` to prevent concurrent read-modify-write conflicts.
 
 ---
 
@@ -61,19 +61,25 @@ export const sessions = table('sessions', {
 
 ## Deploying Schema & Handlers
 
-When you push code with `@tgcloud/cli`, the platform automatically inspects `tgcloud/schema.js` and applies necessary migrations before activating your handlers:
+When deploying with `@tgcloud/cli`:
+1. Use `tgcloud diff` to inspect pending schema and code changes.
+2. Run `tgcloud migrate` to apply any pending SQLite DDL migrations defined in `tgcloud/schema.js`.
+3. Run `tgcloud push` to upload code and activate your handlers.
 
 ```bash
 # Preview schema migrations and code diff
 tgcloud diff
 
-# Apply schema migrations and deploy code
+# Apply SQLite schema migrations
+tgcloud migrate
+
+# Deploy code and static assets
 tgcloud push
 ```
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
-- **Every DB Call Is Asynchronous:** In `sdk/db`, calling `db.select().from(table).get()` returns a Promise. **Always `await` every query**, otherwise you receive an unexecuted query builder object.
-- **Do Not Declare Foreign Keys:** Foreign keys throw at declaration time. Store related IDs as plain `integer('user_id').notNull()` and query them with `eq(tasks.userId, ctx.userId)`.
+- **Asynchronous DB Operations:** In `sdk/db`, database queries return Promises. Always `await` query execution (`await db.select().from(table)...`).
+- **Foreign Keys:** Avoid declaring `.references()`. Instead, store related identifiers as integer columns (e.g. `integer('user_id').notNull()`) and filter with query predicates such as `eq(tasks.userId, ctx.userId)`.

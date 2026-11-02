@@ -4,20 +4,20 @@ This recipe demonstrates building conversational forms and multi-turn onboarding
 
 ---
 
-## The Challenge of Multi-Turn Flows in Serverless
+## Multi-Turn Conversations in Serverless Runtimes
 
-In a serverless runtime, each message from a user arrives in an isolated execution sandbox. Without an explicit Finite State Machine:
-- You end up writing brittle `if (state === 'WAITING_FOR_AGE')` spaghetti across your message handlers.
-- Handling validation errors requires manually maintaining step counters.
-- Supporting `/cancel` or `/back` requires complex cleanup routines.
+In a serverless architecture, each incoming update arrives in an independent execution context. Managing multi-step interactions requires maintaining conversational state between requests:
+- Tracking user progression across multiple messages.
+- Validating intermediate input before moving to the next step.
+- Handling branching, cancellation (`/cancel`), or step rewinding (`/back`).
 
-### The Gramless FSM Solution
-Gramless provides a declarative, lightweight FSM engine that integrates with your session store:
-- **`wizard.step(name, handler, [guard])`**: Declares a step with an optional asynchronous validation guard. If the guard returns `false`, execution halts and the user remains on the step.
-- **`ctx.fsm.goto(nextStep)`**: Transitions the user to the next scene.
-- **`ctx.fsm.back()`**: Automatically reverts to the previous step using the internal history stack.
-- **`ctx.fsm.complete()`**: Finalizes the flow and wipes ephemeral wizard data.
-- **`cancelCommand: '/cancel'`**: Global cancellation hook that cleans up conversation state from anywhere in the flow.
+### Finite State Machine Implementation
+Gramless includes an integrated FSM engine (`createFSM`) that coordinates directly with your session store:
+- **`wizard.step(name, handler, [guard])`**: Defines a conversation step with an optional validation guard. If the guard returns `false`, execution stops and the user remains on the current step.
+- **`ctx.fsm.goto(nextStep)`**: Transitions the conversation to a designated step.
+- **`ctx.fsm.back()`**: Returns to the previous step using an internal transition stack.
+- **`ctx.fsm.complete()`**: Completes the conversation and clears wizard state.
+- **`cancelCommand: '/cancel'`**: Global cancellation command that resets conversation state.
 
 ---
 
@@ -70,7 +70,7 @@ bot.use(wizard.middleware());
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
 - **Session Middleware Must Precede FSM:** `bot.use(session(...))` must be registered **before** `bot.use(wizard.middleware())`, as the FSM stores scene state and transition history directly inside `ctx.session.__fsm`.
 - **Always Await Guard Predicates:** Guards can be asynchronous (e.g. querying a database to verify an invite code). Ensure you return a boolean `true` or `false`.

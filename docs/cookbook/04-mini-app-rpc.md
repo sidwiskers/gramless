@@ -4,17 +4,17 @@ This recipe shows how to build an end-to-end Telegram Mini App where a client-si
 
 ---
 
-## Architectural Problem: WebApp Authentication & Validation
+## Overview: Mini App Architecture & Authentication
 
-Building Mini Apps on standard hosting (Node/Express/Next.js) requires:
-1. Setting up external domains, SSL certs, and CORS configurations.
-2. Manually parsing and hashing the raw `initData` string with your bot token to verify that the user ID wasn't spoofed by a client-side attacker.
-3. Installing heavy validation libraries (Zod, Joi, Yup) that balloon cold-start times.
+Building Telegram Mini Apps with serverless backends involves:
+1. Serving static assets (HTML/CSS/JS) securely via CDN.
+2. Authenticating incoming client requests by validating Telegram `initData`.
+3. Validating payload structures before passing them to database and business logic.
 
-### The Gramless & TGCloud Solution
-- **Zero-Config Hosting:** By setting `"static": "public"` in `tgcloud.jsonc`, your HTML/CSS/JS frontend is served directly from Telegram's global CDN with automatic SSL and zero server maintenance.
-- **Built-in Cryptographic Identity:** TGCloud's runtime verifies caller credentials before passing execution to your isolate. `createEndpoint({ requireAuth: true })` automatically extracts the verified user and attaches it to `ctx.user`.
-- **Built-in Schema Validation:** Gramless includes `v` (`v.string()`, `v.number()`, `v.boolean()`, `v.object()`) for validating incoming payloads without external dependencies.
+### Gramless & TGCloud Integration
+- **Static Hosting:** Setting `"static": "public"` in `tgcloud.jsonc` serves frontend assets directly from Telegram's CDN with HTTPS enabled.
+- **Caller Identity:** TGCloud validates caller signatures before invoking your isolate. Setting `createEndpoint({ requireAuth: true })` ensures that only authenticated requests reach the handler, attaching verified user data to `ctx.user`.
+- **Schema Validation:** Gramless includes lightweight schema validators (`v.string()`, `v.number()`, `v.boolean()`, `v.object()`) for runtime payload validation without external dependencies.
 
 ---
 
@@ -70,17 +70,31 @@ export default createEndpoint({
 ## Frontend Invocation (`public/app.js`)
 
 ```javascript
-// Invoking serverless RPC from the Mini App
-const result = await Telegram.WebApp.Serverless.call('submitScore', {
-  score: 1500,
+// Invoking serverless RPC from the Mini App via callback
+Telegram.WebApp.Serverless.call('submitScore', { score: 1500 }, (err, result) => {
+  if (err) {
+    console.error('Call failed:', err);
+    return;
+  }
+  console.log('Server response:', result);
 });
 
+// Or using an asynchronous Promise wrapper:
+const callEndpoint = (name, payload) =>
+  new Promise((resolve, reject) => {
+    Telegram.WebApp.Serverless.call(name, payload, (err, res) => {
+      if (err) reject(err);
+      else resolve(res);
+    });
+  });
+
+const result = await callEndpoint('submitScore', { score: 1500 });
 console.log('Server response:', result);
 ```
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
-- **Endpoints Must Be in a Flat Directory:** All RPC endpoint files must reside directly in `tgcloud/endpoints/` (e.g. `tgcloud/endpoints/submitScore.js`). Subdirectories inside `endpoints/` are not supported by the TGCloud router.
-- **Verified Caller Identity:** In raw TGCloud, the authenticated user is located at `ctx.initData.user`. Gramless's `createEndpoint` automatically unwraps this onto `ctx.user` for convenience.
+- **Flat Endpoint Hierarchy:** Endpoint files must reside directly in `tgcloud/endpoints/` (e.g. `tgcloud/endpoints/submitScore.js`). Nested subdirectories inside `endpoints/` are not supported.
+- **Verified Caller Identity:** In the raw platform context, verified user information is located at `ctx.initData.user`. Gramless provides access directly on `ctx.user`.

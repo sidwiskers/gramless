@@ -4,19 +4,19 @@ This recipe demonstrates how to write 100% deterministic, offline automated test
 
 ---
 
-## Architectural Problem: The Fragility of Bot Testing
+## Testing Strategy & Challenges
 
-Historically, testing a Telegram bot required:
-1. Registering disposable test bots via @BotFather.
-2. Running live network requests against `api.telegram.org` during CI runs, hitting rate limits and network flakiness.
-3. Setting up complex mock HTTP servers (nock, msw) that constantly diverge from Telegram's real payload schemas.
+Testing Telegram bots often presents logistical challenges:
+1. Managing dedicated test bot tokens via @BotFather.
+2. Executing live HTTP requests to `api.telegram.org` during CI pipelines, introducing network latency and rate limits.
+3. Maintaining mock HTTP fixtures that can drift from Telegram Bot API specifications.
 
-### The Gramless Lab Solution
-Gramless Lab runs entirely in-process inside your test runner:
-- **Zero Bot Tokens & Zero Network:** All outbound actions (`sendMessage`, `editMessageText`, `answerCallbackQuery`) are intercepted by a high-speed in-memory mock engine.
-- **Virtual User Actors:** Simulate realistic multi-turn conversations using `lab.user(id, name)`.
-- **Fluent Matcher Assertions:** Test expectations declaratively using `Sent('pattern')`, `Edited('pattern')`, and `Answered()`.
-- **Session & Concurrency Isolation:** Multiple virtual actors maintain completely isolated session stores, letting you verify multi-user isolation and race condition safety.
+### The Gramless Lab Approach
+Gramless Lab (`gramless/testkit`) executes tests completely in-process:
+- **Offline Mock Engine:** Outbound API calls (`sendMessage`, `editMessageText`, `answerCallbackQuery`) are intercepted by an in-memory client.
+- **Virtual User Actors:** Multi-turn interactions are simulated using `lab.user(id, name)`.
+- **Declarative Assertions:** Response expectations are verified using `Sent('pattern')`, `Edited('pattern')`, and `Answered()`.
+- **Session Isolation:** Each virtual actor maintains independent session state, enabling deterministic concurrency testing.
 
 ---
 

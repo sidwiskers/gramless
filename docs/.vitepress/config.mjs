@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 export default defineConfig({
   title: 'Gramless',
-  description: 'Ultra-fast, zero-dependency, transactional Telegram Serverless framework',
+  description: 'Zero-dependency, transactional Telegram framework for Telegram Serverless and Node.js',
   base: '/gramless/',
   cleanUrls: true,
   sitemap: {

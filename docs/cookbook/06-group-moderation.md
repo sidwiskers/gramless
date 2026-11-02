@@ -4,15 +4,16 @@ This recipe demonstrates anti-spam link filtering and administrator moderation t
 
 ---
 
-## Architectural Problem: Filtering High-Volume Group Updates
+## High-Volume Group Updates & Filtering
 
-In group chats, your bot receives hundreds of updates per minute.
-- Standard frameworks often execute full regex chains or database queries for every single update, causing heavy CPU bottlenecks.
-- Without declarative filters, moderation logic ends up deeply nested inside `if (msg.chat.type === 'group' || msg.chat.type === 'supergroup')` blocks.
+Group chats can generate a significant volume of messages and events. Handling these updates efficiently requires:
+- Filtering out irrelevant chat types and message payloads early in the execution pipeline.
+- Avoiding redundant regex compilations or unnecessary database queries.
+- Providing direct access to Telegram chat administration methods.
 
-### The Gramless Solution
-- **Composable Filters:** Gramless provides functional filter combinators (`Filter.all`, `Filter.any`, `Filter.not`) that short-circuit immediately if early conditions fail.
-- **Dedicated Bot API Wrappers:** Context exposes direct moderation wrappers (`ctx.banSender(true)`, `ctx.restrictMember()`, `ctx.delete()`, `ctx.unbanMember()`) that automatically infer the current `chat_id` and `message_id`.
+### Composable Filter Architecture
+- **Composable Filters:** Gramless provides functional filter combinators (`Filter.all`, `Filter.any`, `Filter.not`) that short-circuit immediately if conditions fail.
+- **Context Administration Helpers:** Context exposes moderation helpers (`ctx.banSender(true)`, `ctx.restrictMember()`, `ctx.delete()`, `ctx.unbanMember()`) that automatically infer the current `chat_id` and `message_id`.
 
 ---
 
@@ -75,7 +76,7 @@ bot.command('ban', async (ctx) => {
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
 - **Bot Must Have Admin Rights:** Moderation methods (`deleteMessage`, `banChatMember`, `restrictChatMember`) require appropriate administrator privileges in the group. If permissions are missing, Telegram returns a `400 Bad Request: NOT_ENOUGH_RIGHTS`.
 - **Bot Updates on Group Status:** When users add the bot to a group or change its administrator rights, Telegram delivers a `my_chat_member` update, NOT a `message`. Handle it in `tgcloud/handlers/my_chat_member.js`.

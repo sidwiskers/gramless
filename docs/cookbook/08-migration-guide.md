@@ -11,10 +11,10 @@ Traditional Node.js frameworks were designed for long-running servers. TGCloud r
 | Feature / Architecture | grammY / Telegraf | Gramless (TGCloud) |
 | :--- | :--- | :--- |
 | **Execution Model** | Persistent Node.js process | Ephemeral V8 isolates |
-| **Bot Token Handling** | Hardcoded or read via `process.env.BOT_TOKEN` | Managed securely by Telegram Cloud (no tokens in code) |
+| **Bot Token Handling** | Read via `process.env.BOT_TOKEN` | Managed by Telegram Cloud proxy (no tokens in code) |
 | **Ingress Pipeline** | `bot.start()` (long polling) or Express webhook | `export default bot.handler()` |
-| **Runtime Dependencies** | 15–40 packages in `node_modules` | **Zero (0) dependencies** |
-| **Database & Sessions** | External Redis / MongoDB / Postgres | Built-in SQLite (`sdk/db`) with **ACID rollback** |
+| **Runtime Dependencies** | External packages | **Zero external dependencies** |
+| **Database & Sessions** | External Redis / MongoDB / Postgres | Built-in SQLite (`sdk/db`) with transactional rollback |
 | **Mini App Backend** | External Express / FastAPI backend | Built-in serverless RPC (`createEndpoint`) |
 
 ---
@@ -25,7 +25,7 @@ Traditional Node.js frameworks were designed for long-running servers. TGCloud r
 
 #### In grammY / Telegraf:
 ```javascript
-// Old: Requires token and long-polling loop
+// Requires token and long-polling loop or webhook server
 import { Bot } from 'grammy'; // or { Telegraf } from 'telegraf';
 
 const bot = new Bot(process.env.BOT_TOKEN);
@@ -37,7 +37,7 @@ bot.start(); // Blocks process
 
 #### In Gramless (TGCloud):
 ```javascript
-// New: Zero tokens, instant export
+// Zero tokens required in TGCloud, instant export
 import { createBot } from 'gramless';
 
 export const bot = createBot();
@@ -56,7 +56,7 @@ export default bot.handler();
 
 #### In grammY / Telegraf:
 ```javascript
-// grammY: Requires importing extra keyboard class
+// Requires importing keyboard builder class
 import { InlineKeyboard } from 'grammy';
 
 const keyboard = new InlineKeyboard()
@@ -69,7 +69,7 @@ await ctx.reply('Menu:', { reply_markup: keyboard });
 
 #### In Gramless:
 ```javascript
-// Gramless: Intuitive array shorthand with zero extra imports
+// Array shorthand without extra imports
 await ctx.reply('Menu:', {
   buttons: [
     [{ text: 'Click me', data: 'btn_click' }],
@@ -84,7 +84,7 @@ await ctx.reply('Menu:', {
 
 #### In grammY / Telegraf:
 ```javascript
-// Old: External Redis adapter with race condition risks
+// External Redis adapter
 import { session } from 'grammy';
 import { RedisAdapter } from '@grammyjs/storage-redis';
 
@@ -94,13 +94,13 @@ bot.use(session({
 
 bot.command('transfer', async (ctx) => {
   ctx.session.balance -= 50;
-  await callExternalPayment(); // If this fails, session is already corrupted!
+  await callExternalPayment(); // If this fails, state is already updated
 });
 ```
 
 #### In Gramless:
 ```javascript
-// New: ACID SQLite with automatic rollback
+// SQLite session store with transactional staging
 import { session, TgCloudSessionStore } from 'gramless';
 import { db } from 'sdk';
 import { eq } from 'sdk/db';
@@ -113,7 +113,7 @@ bot.use(session({
 
 bot.command('transfer', async (ctx) => {
   ctx.session.balance -= 50;
-  await callExternalPayment(); // Invariant: If this throws, ctx.session rolls back automatically!
+  await callExternalPayment(); // If this throws, ctx.session rolls back automatically
 });
 ```
 
@@ -123,14 +123,14 @@ bot.command('transfer', async (ctx) => {
 
 #### In grammY:
 ```javascript
-// Old: grammY filter queries
+// grammY filter queries
 bot.on('message:photo', async (ctx) => { ... });
 bot.filter((ctx) => ctx.chat?.type === 'group', async (ctx) => { ... });
 ```
 
 #### In Gramless:
 ```javascript
-// New: Functional filter combinators
+// Functional filter combinators
 import { Filter } from 'gramless';
 
 // Matches photos inside groups:
@@ -141,9 +141,9 @@ bot.on(Filter.all(Filter.group, Filter.hasPhoto), async (ctx) => {
 
 ---
 
-## 3. Common Migration Pitfalls (Gotchas)
+## 3. Common Migration Considerations
 
-1. **Do Not Call `bot.start()` or `bot.launch()`:** In TGCloud, the platform handles HTTP routing and event dispatch. Trying to start a long-polling loop will throw an error or time out. Simply export `bot.handler()`.
-2. **Always Use `.js` in Relative Imports:** TGCloud V8 isolates enforce standard ECMAScript module resolution. `import { bot } from './lib/bot'` will fail; use `import { bot } from './lib/bot.js'`.
-3. **Database Calls Are Asynchronous:** In `sdk/db`, all query builder calls must be awaited (`await db.select()...run()`). Missing `await` leaves the promise unresolved.
-4. **Remove Bot Tokens from Configs:** TGCloud isolates communicate with the Bot API proxy automatically via virtual import `api` from `'sdk'`. Never commit or hardcode bot tokens into serverless repositories.
+1. **Deploying on TGCloud vs Traditional Servers:** In TGCloud, export `bot.handler()`. When running on traditional servers (VPS or container), use `bot.start()` for polling or `bot.webhookCallback()` for HTTP servers.
+2. **ES Module Imports:** TGCloud V8 isolates enforce standard ECMAScript module resolution. Relative imports must include file extensions (`import { bot } from './lib/bot.js'`).
+3. **Asynchronous Database Calls:** In `sdk/db`, all query builder operations are asynchronous and return Promises. Always prefix queries with `await`.
+4. **Token Management on TGCloud:** In TGCloud environments, the API client communicates automatically via the runtime proxy (`import { api } from 'sdk'`). Bot tokens do not need to be passed in application code.

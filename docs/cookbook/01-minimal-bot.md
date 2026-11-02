@@ -86,7 +86,7 @@ tgcloud push
 
 ---
 
-## Rules That Bite
+## Key Considerations
 
 - **Relative Imports Must Include Extensions:** In TGCloud V8 isolates, `import { bot } from '../lib/bot'` fails. You must specify the `.js` extension: `import { bot } from '../lib/bot.js'`.
 - **Answering Callbacks:** Always call `await ctx.answer()` inside `bot.action()` handlers to dismiss the loading spinner on Telegram clients.
