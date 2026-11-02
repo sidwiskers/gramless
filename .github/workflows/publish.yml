@@ -25,7 +25,25 @@ jobs:
       - name: Run Test Suite
         run: npm test
 
-      - name: Publish to NPM with Provenance
-        run: npm publish --provenance --access public
+      - name: Publish Gramless to NPM with Provenance
+        run: |
+          CURRENT_VER=$(node -e "import fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync('package.json')).version);")
+          if ! npm view gramless@$CURRENT_VER version >/dev/null 2>&1; then
+            npm publish --provenance --access public
+          else
+            echo "gramless@$CURRENT_VER is already published, skipping"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish create-gramless to NPM with Provenance
+        run: |
+          cd packages/create-gramless
+          CURRENT_VER=$(node -e "import fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync('package.json')).version);")
+          if ! npm view create-gramless@$CURRENT_VER version >/dev/null 2>&1; then
+            npm publish --provenance --access public
+          else
+            echo "create-gramless@$CURRENT_VER is already published, skipping"
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
