@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "types": "./types/index.d.ts",
   "bin": {
-    "gramless": "./bin/gramless.js"
+    "gramless": "bin/gramless.js"
   },
   "exports": {
     ".": {
