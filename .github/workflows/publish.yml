@@ -26,7 +26,12 @@ jobs:
         run: node --test --test-reporter spec tests/*.test.js
 
       - name: Verify NPM Auth
-        run: npm whoami
+        run: |
+          if ! npm whoami >/dev/null 2>&1; then
+            echo "::error::NPM_TOKEN secret is invalid or expired. Please update NPM_TOKEN in GitHub repository secrets."
+            exit 1
+          fi
+          echo "Authenticated as: $(npm whoami)"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
