@@ -8,6 +8,6 @@
     "start": "node --env-file=.env index.js"
   },
   "dependencies": {
-    "gramless": "^1.3.3"
+    "gramless": "^1.4.0"
   }
 }

@@ -1,6 +1,6 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-153%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-162%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-8.x%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
@@ -95,28 +95,30 @@ gramless/
 ├── src/
 │   ├── index.js          # Root facade & bot constructor
 │   ├── router.js         # Constant-time route compiler, update dispatcher & fetch adapter
-│   ├── context.js        # Ergonomic Context facade with full Bot API coverage
+│   ├── context.js        # Ergonomic Context facade with full Bot API coverage & clock budgets
 │   ├── filters.js        # Composable functional filter predicates
 │   ├── errors.js         # Typed error system with classification & token sanitization
-│   ├── session.js        # Transactional SQLite session engine with rollback
+│   ├── session.js        # Transactional SQLite session engine with rollback & checkpointing
 │   ├── fsm.js            # Finite State Machine / conversation scenes
 │   ├── endpoint.js       # Mini App RPC bridge with zero-dependency schema validation
-│   ├── ratelimit.js      # Sliding-window anti-spam & flood wait control
+│   ├── ratelimit.js      # Sliding-window anti-spam & declarative rateLimitGuard shield
 │   ├── i18n.js           # Multi-language localization & pluralization
 │   ├── menu.js           # Interactive menus & pagination engine
 │   ├── deeplink.js       # Deep link parsing & referral tracking
 │   ├── payments.js       # Telegram Stars (XTR) payments engine
 │   ├── media_group.js    # Album / multi-photo debounce aggregator
-│   ├── auto_retry.js     # Telegram 429 flood wait auto-retry interceptor
+│   ├── auto_retry.js     # Telegram 429 flood wait auto-retry with serverless ceiling
 │   ├── stateless_question.js # Zero-state force_reply prompts
 │   ├── cleaner.js        # Message cleaner & temp notice purger
 │   ├── format.js         # Zero-dependency safe entity escaping & template tags
 │   ├── init_data.js      # Cryptographic Mini App auth via Web Crypto API
 │   ├── pacer.js          # Proactive flood control (1s DM, 3s group pacing)
+│   ├── isolate.js        # Isolate-native delay and timer primitives (Atomics / spin-loop)
+│   ├── batch.js          # Multi-pass batch processing with interactive continuation UI
 │   └── testkit/          # Gramless Lab: deterministic offline test harness
 ├── types/
 │   └── index.d.ts        # Comprehensive TypeScript definitions
-└── tests/                # 117 unit, integration, and benchmark tests
+└── tests/                # 162 unit, integration, and benchmark tests
 ```
 
 ---
@@ -645,6 +647,133 @@ try {
   if (isBlockedError(err)) await db.markUserInactive(ctx.userId);
   if (err.isPermissionDenied) await ctx.reply('Admin permissions required.');
 }
+```
+
+---
+
+## V8 Isolate Systems & Execution Budgeting (v1.4+)
+
+Telegram Serverless (`tgcloud`) executes bot code inside pure V8 isolates subject to strict runtime characteristics:
+- **No timer globals:** Standard Node.js `setTimeout` and `clearTimeout` do not exist.
+- **Hard 10.4s isolate execution ceiling:** Any execution reaching ~10,480ms is forcibly terminated by the platform.
+- **Egress sandbox firewall:** Direct internal loopbacks to `api.telegram.org` or `*.tgcloud.ai` within the sandbox are blocked (`[sdk/io:166:36]`). Synthetic HMAC `initData` generated inside isolates is rejected (`401 Unauthorized`).
+
+Gramless v1.4+ provides isolate-native primitives to manage these boundaries cleanly:
+
+### 1. Isolate-Native Delays (`sleep`)
+Zero-dependency delay primitive that never throws `ReferenceError: setTimeout is not defined`:
+```javascript
+import { sleep, safeSetTimeout, safeClearTimeout } from 'gramless';
+
+// Uses setTimeout in Node.js, and Atomics.wait on SharedArrayBuffer or micro-yields in pure isolates
+await sleep(100);
+
+// Non-crashing timer wrappers
+const handle = safeSetTimeout(() => console.log('Done'), 50);
+safeClearTimeout(handle);
+```
+
+### 2. Execution Clock & Deadline Budgeting
+`ctx` tracks invocation wall-clock time and remaining execution budget:
+```javascript
+bot.command('sync', async (ctx) => {
+  console.log(`Elapsed: ${ctx.elapsedMs}ms`);
+  console.log(`Remaining: ${ctx.remainingMs()}ms`);
+  console.log(`Hard deadline: ${new Date(ctx.deadline).toISOString()}`);
+
+  if (!ctx.hasTimeFor(2000)) {
+    return ctx.reply('Workload paused to prevent platform isolate termination.');
+  }
+});
+```
+
+### 3. Transactional Mid-Execution Checkpointing
+Commit intermediate progress to SQLite before the isolate reaches its 10.4s deadline:
+```javascript
+bot.command('import', async (ctx) => {
+  for (const [idx, item] of items.entries()) {
+    ctx.session.processedCount = idx + 1;
+
+    // Checkpoint state immediately to SQLite every 10 items
+    if (idx % 10 === 0) {
+      await ctx.checkpoint();
+    }
+  }
+});
+```
+
+### 4. Serverless-Aware Flood Control (`FloodWaitError`)
+Unconditional sleep during a 429 flood wait (> 1.5s) will cause the platform to terminate the isolate. Gramless enforces a 1.5s serverless ceiling:
+```javascript
+import { autoRetry, FloodWaitError } from 'gramless';
+
+bot.use(autoRetry({ maxServerlessDelay: 1500 }));
+
+try {
+  await ctx.sendPhoto(fileId);
+} catch (err) {
+  if (err instanceof FloodWaitError) {
+    // Retry-after exceeded serverless ceiling: alert user without killing the isolate
+    await ctx.reply(`Telegram servers are busy. Please retry in ${err.retryAfter}s.`);
+  }
+}
+```
+
+### 5. Declarative Rate Limit Shield (`rateLimitGuard`)
+Deflects rapid button double-taps and spam clicks during active cooldowns with an instant toast alert (`ctx.answer`), bypassing downstream handler execution:
+```javascript
+import { rateLimitGuard } from 'gramless';
+
+// Limits clicks to 1 per second per user; alerts on spam
+bot.action('heavy_task', rateLimitGuard({ window: '1s' }), async (ctx) => {
+  await ctx.reply('Heavy calculation starting...');
+});
+```
+
+### 6. Interactive Multi-Pass Batch Processing (`createBatchJob`)
+Slices large tasks (e.g. cloning 100+ stickers or bulk imports) across interactive passes within isolate deadlines:
+```javascript
+import { createBatchJob } from 'gramless';
+
+const stickerSync = createBatchJob({
+  name: 'sticker_sync',
+  chunkSize: 15,          // Items per isolate pass
+  timeBudgetMs: 8000,     // Pause before 8.0s isolate budget
+  processItem: async (sticker, ctx) => {
+    await ctx.call('addStickerToSet', sticker);
+  },
+  onProgress: async ({ cursor, total }, ctx) => {
+    await ctx.reply(`Progress: ${cursor}/${total}`, {
+      reply_markup: stickerSync.createContinuationMarkup(cursor, total),
+    });
+  },
+  onComplete: async ({ total }, ctx) => {
+    await ctx.reply(`Completed syncing all ${total} stickers!`);
+  },
+});
+
+bot.command('sync_stickers', async (ctx) => {
+  const stickers = await fetchStickerList();
+  await stickerSync.run(stickers, ctx);
+});
+
+// Resumes when user clicks the "Continue ▶️" button
+bot.action(/^batch:sticker_sync:(\d+)$/, stickerSync.middleware(fetchStickerList));
+```
+
+### 7. Direct Dependency Injection
+Inject platform API and SQLite DB clients directly into `bot.handler()`, eliminating dynamic `import('sdk')` cold-start overhead:
+```javascript
+import { createBot } from 'gramless';
+import { api, db } from 'sdk';
+
+const bot = createBot();
+
+export default bot.handler({
+  api,
+  db,
+  executionTimeoutMs: 9500,
+});
 ```
 
 ---

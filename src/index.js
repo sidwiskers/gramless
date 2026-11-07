@@ -19,6 +19,7 @@ export { Filter } from './filters.js';
 export {
   GramlessError,
   ApiError,
+  FloodWaitError,
   ValidationError,
   RoutingError,
   SessionError,
@@ -41,7 +42,7 @@ export {
 } from './session.js';
 export { createFSM, FsmMachine } from './fsm.js';
 export { createEndpoint, v } from './endpoint.js';
-export { rateLimit, MemoryRateLimitStore, RateLimitKey } from './ratelimit.js';
+export { rateLimit, rateLimitGuard, MemoryRateLimitStore, RateLimitKey } from './ratelimit.js';
 export { createI18n, I18nEngine } from './i18n.js';
 export { paginate, Menu } from './menu.js';
 export { createDeepLinkRouter, createDeepLink, decodeDeepLinkPayload } from './deeplink.js';
@@ -71,6 +72,16 @@ export {
   wrapPacer,
   pacer,
 } from './pacer.js';
+export {
+  sleep,
+  safeSetTimeout,
+  safeClearTimeout,
+  isIsolateRuntime,
+} from './isolate.js';
+export {
+  BatchJob,
+  createBatchJob,
+} from './batch.js';
 
 /**
  * Creates a new Gramless bot application router.

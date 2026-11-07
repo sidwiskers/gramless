@@ -263,6 +263,25 @@ export class SessionConflictError extends SessionError {
 }
 
 /**
+ * Thrown when a Telegram API call receives a 429 Flood Wait response that exceeds
+ * the isolate's execution budget or configured maximum retry duration.
+ */
+export class FloodWaitError extends ApiError {
+  /**
+   * @param {string} method
+   * @param {string} description
+   * @param {number} [retryAfter=1] Seconds to wait before retry
+   * @param {Record<string, unknown>} [parameters={}]
+   */
+  constructor(method, description, retryAfter = 1, parameters = {}) {
+    super(method, description, 429, { ...parameters, retry_after: retryAfter });
+    this.name = 'FloodWaitError';
+    this.code = 'FLOOD_WAIT';
+    this.retryAfterMs = retryAfter * 1000;
+  }
+}
+
+/**
  * Wraps an unhandled exception or panic within a handler.
  */
 export class PanicError extends GramlessError {

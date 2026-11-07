@@ -5,9 +5,106 @@
  * Drop directly into tgcloud/lib/gramless.js and import:
  *   import { createBot, Filter, session } from './lib/gramless.js';
  * 
- * Version: 1.3.5
+ * Version: 1.4.0
  * License: MIT
  */
+
+// --- Module: isolate.js ---
+/**
+ * Gramless Isolate-Native Runtime Primitives
+ * 
+ * Provides safe timer, delay, and execution primitives engineered for pure V8 isolates
+ * (such as Telegram Serverless / TGCloud) where global `setTimeout` and `clearTimeout`
+ * are not provided by the host environment.
+ */
+
+/**
+ * Checks if the current execution environment is a sandboxed V8 isolate
+ * without standard timer globals.
+ * 
+ * @returns {boolean}
+ */
+export function isIsolateRuntime() {
+  return typeof setTimeout === 'undefined';
+}
+
+/**
+ * Non-crashing delay primitive.
+ * - In Node.js / browser / modern workers: uses setTimeout.
+ * - In pure V8 isolates: leverages Atomics.wait on SharedArrayBuffer or a micro-yield loop.
+ * 
+ * @param {number} ms Milliseconds to sleep
+ * @returns {Promise<void>}
+ */
+export function sleep(ms) {
+  if (ms <= 0) return Promise.resolve();
+
+  // 1. Standard host environment with timer globals
+  if (typeof setTimeout === 'function') {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // 2. Pure V8 isolate with SharedArrayBuffer & Atomics support
+  if (
+    typeof SharedArrayBuffer !== 'undefined' &&
+    typeof Atomics !== 'undefined' &&
+    typeof Atomics.wait === 'function'
+  ) {
+    try {
+      const int32 = new Int32Array(new SharedArrayBuffer(4));
+      Atomics.wait(int32, 0, 0, Math.min(ms, 10000));
+      return Promise.resolve();
+    } catch {
+      // Atomics.wait disallowed or throws in current thread context
+    }
+  }
+
+  // 3. Fallback synchronous yield loop for pure isolated runtimes
+  const start = Date.now();
+  while (Date.now() - start < ms) {
+    // Spin until wall-clock elapsed
+  }
+  return Promise.resolve();
+}
+
+/**
+ * Safe setTimeout wrapper that does not throw ReferenceError in pure V8 isolates.
+ * 
+ * @param {Function} callback
+ * @param {number} [ms=0]
+ * @returns {any} Timer handle or null
+ */
+export function safeSetTimeout(callback, ms = 0) {
+  if (typeof setTimeout === 'function') {
+    return setTimeout(callback, ms);
+  }
+
+  // In isolate without timers, queue asynchronously via microtask
+  let cancelled = false;
+  const handle = { cancelled };
+
+  Promise.resolve().then(() => {
+    if (!handle.cancelled) {
+      callback();
+    }
+  });
+
+  return handle;
+}
+
+/**
+ * Safe clearTimeout wrapper that accepts any handle or null.
+ * 
+ * @param {any} handle
+ */
+export function safeClearTimeout(handle) {
+  if (!handle) return;
+  if (typeof clearTimeout === 'function') {
+    clearTimeout(handle);
+  } else if (typeof handle === 'object' && handle !== null) {
+    handle.cancelled = true;
+  }
+}
 
 // --- Module: errors.js ---
 /**
@@ -271,6 +368,25 @@ export class SessionConflictError extends SessionError {
   constructor(message = 'Session state conflict: concurrent update detected', details = {}) {
     super(message, { code: 'SESSION_CONFLICT', ...details });
     this.code = 'SESSION_CONFLICT';
+  }
+}
+
+/**
+ * Thrown when a Telegram API call receives a 429 Flood Wait response that exceeds
+ * the isolate's execution budget or configured maximum retry duration.
+ */
+export class FloodWaitError extends ApiError {
+  /**
+   * @param {string} method
+   * @param {string} description
+   * @param {number} [retryAfter=1] Seconds to wait before retry
+   * @param {Record<string, unknown>} [parameters={}]
+   */
+  constructor(method, description, retryAfter = 1, parameters = {}) {
+    super(method, description, 429, { ...parameters, retry_after: retryAfter });
+    this.name = 'FloodWaitError';
+    this.code = 'FLOOD_WAIT';
+    this.retryAfterMs = retryAfter * 1000;
   }
 }
 
@@ -979,6 +1095,7 @@ export function initDataAuth(botToken, options = {}) {
  * Engineered for V8 Isolates and TGCloud with zero external dependencies.
  */
 
+
 const DEFAULT_PACED_METHODS = new Set([
   'sendMessage',
   'sendPhoto',
@@ -1127,7 +1244,7 @@ export class ChatPacer {
     if (chatId === null || chatId === undefined) {
       const globalDelay = this.globalTokenBucket.acquireDelay();
       if (globalDelay > 0) {
-        await new Promise((r) => setTimeout(r, globalDelay));
+        await sleep(globalDelay);
       }
       await this._acquireSlot();
       try {
@@ -1159,7 +1276,7 @@ export class ChatPacer {
 
           const totalDelay = Math.max(chatDelay, globalDelay);
           if (totalDelay > 0) {
-            await new Promise((r) => setTimeout(r, totalDelay));
+            await sleep(totalDelay);
           }
 
           await this._acquireSlot();
@@ -1495,19 +1612,29 @@ export function cleaner(options = {}) {
  * sleeps for the requested retry_after seconds, and retries the outbound call.
  */
 
+
+
 /**
  * Executes a function with automatic retry on Telegram 429 flood control errors.
+ * 
+ * In serverless isolates, retry delays exceeding maxServerlessDelay (default 1.5s)
+ * abort immediately and throw FloodWaitError, preventing fatal platform isolate timeouts.
  * 
  * @param {Function} callFn Async function to invoke
  * @param {Object} [options={}]
  * @param {number} [options.maxRetries=3] Maximum number of retry attempts
  * @param {number} [options.maxDelay=60000] Maximum acceptable retry_after wait in ms
+ * @param {number} [options.maxServerlessDelay=1500] Maximum acceptable wait in serverless isolates
+ * @param {boolean} [options.serverless] Force serverless ceiling behavior
  * @param {Function} [options.onRetry] Hook called before sleeping: (info) => void
  * @returns {Promise<any>}
  */
 export async function executeWithRetry(callFn, options = {}) {
   const maxRetries = options.maxRetries !== undefined ? options.maxRetries : 3;
-  const maxDelay = options.maxDelay !== undefined ? options.maxDelay : 60000;
+  const isServerless = options.serverless ?? isIsolateRuntime();
+  const maxDelay = isServerless
+    ? (options.maxServerlessDelay ?? 1500)
+    : (options.maxDelay ?? 60000);
   const onRetry = options.onRetry || null;
 
   let attempt = 0;
@@ -1533,9 +1660,20 @@ export async function executeWithRetry(callFn, options = {}) {
             });
           }
 
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await sleep(delayMs);
           continue;
         }
+
+        // Delay exceeds ceiling: abort and emit structured FloodWaitError
+        const desc = err.description
+          ? `${err.description} (${retryAfter}s exceeds serverless isolate ceiling)`
+          : `Telegram flood wait (${retryAfter}s exceeds serverless isolate ceiling)`;
+        throw new FloodWaitError(
+          err.method || 'unknown',
+          desc,
+          retryAfter,
+          err.parameters || {}
+        );
       }
 
       throw err;
@@ -1609,6 +1747,7 @@ export function autoRetry(options = {}) {
  * into a single consolidated handler execution, preventing duplicate responses.
  */
 
+
 export class MediaGroupAggregator {
   /**
    * @param {Object} [options={}]
@@ -1636,8 +1775,8 @@ export class MediaGroupAggregator {
       let batch = this.batches.get(mediaGroupId);
 
       const scheduleFlush = () => {
-        clearTimeout(batch.timer);
-        batch.timer = setTimeout(async () => {
+        safeClearTimeout(batch.timer);
+        batch.timer = safeSetTimeout(async () => {
           this.batches.delete(mediaGroupId);
           const mediaItems = batch.contexts.map(c => c.message || c.raw);
           batch.firstCtx.mediaGroup = mediaItems;
@@ -2499,6 +2638,38 @@ export function rateLimit(options = {}) {
   };
 }
 
+/**
+ * Declarative rate-limit shield middleware.
+ * Deflects rapid button double-taps and spam clicks during active cooldowns with an immediate
+ * alert toast (ctx.answer with show_alert: true) or reply, without executing downstream handlers.
+ * 
+ * @param {Object} [options={}]
+ * @param {number} [options.limit=1] Max requests within window
+ * @param {string|number} [options.window='1s'] Cooldown window (e.g. '1s', '2s', '500ms')
+ * @param {string|Function} [options.message='Please wait a moment before trying again.'] Toast or message to show
+ * @returns {Function}
+ */
+export function rateLimitGuard(options = {}) {
+  const customMessage = options.message || 'Please wait a moment before trying again.';
+  return rateLimit({
+    limit: options.limit ?? 1,
+    window: options.window ?? '1s',
+    ...options,
+    onLimitReached: async (ctx, { retryAfterMs }) => {
+      const secs = Math.max(1, Math.ceil(retryAfterMs / 1000));
+      const msg = typeof customMessage === 'function'
+        ? customMessage(ctx, { retryAfterMs, secs })
+        : customMessage;
+
+      if (ctx.data != null && typeof ctx.answer === 'function') {
+        await ctx.answer(msg, { show_alert: true });
+      } else if (typeof ctx.reply === 'function') {
+        await ctx.reply(msg);
+      }
+    },
+  });
+}
+
 // --- Module: endpoint.js ---
 /**
  * Gramless Mini App Endpoints & RPC Engine
@@ -2926,11 +3097,29 @@ export function session(options = {}) {
     return mutex.acquire(key, async () => {
       // 1. Fetch current committed state
       const savedData = await store.get(key);
-      const originalSnapshot = safeClone(savedData);
+      let originalSnapshot = safeClone(savedData);
 
       // 2. Working copy for handler execution
       let workingCopy = savedData !== null ? safeClone(savedData) : initial();
       ctx.session = workingCopy;
+
+      // Expose explicit mid-execution checkpointing to persist progress before isolate timeouts
+      ctx.saveSession = async () => {
+        if (ctx.session === null) {
+          await store.delete(key);
+        } else {
+          await store.set(key, ctx.session);
+          originalSnapshot = safeClone(ctx.session);
+        }
+      };
+
+      ctx.checkpoint = async (updates) => {
+        if (updates && typeof updates === 'object') {
+          Object.assign(ctx.session, updates);
+        }
+        await ctx.saveSession();
+        return ctx.session;
+      };
 
       try {
         // 3. Execute downstream handlers
@@ -3117,6 +3306,13 @@ export class GramlessContext {
     this.update = ctx.update || {};
     this.api = api;
 
+    // Execution clock & deadline budget
+    this.startedAt = ctx.startedAt || Date.now();
+    this.executionTimeoutMs = ctx.executionTimeoutMs ?? (ctx.deadline ? ctx.deadline - this.startedAt : 9500);
+
+    // Database injection support
+    this.db = ctx.db || api?.db || null;
+
     // Fast-access caches
     this.match = null;
     this.params = {};
@@ -3125,6 +3321,48 @@ export class GramlessContext {
     this.command = null;
     this.payload = '';
     this.args = [];
+  }
+
+  /**
+   * Elapsed execution time in milliseconds since the start of this update.
+   * @returns {number}
+   */
+  get elapsedMs() {
+    return Date.now() - this.startedAt;
+  }
+
+  /**
+   * Approximate wall-clock deadline timestamp (ms) for this isolate execution.
+   * @returns {number}
+   */
+  get deadline() {
+    return this.startedAt + this.executionTimeoutMs;
+  }
+
+  /**
+   * Remaining execution time in milliseconds before reaching the isolate budget.
+   * @returns {number}
+   */
+  remainingMs() {
+    return Math.max(0, this.executionTimeoutMs - (Date.now() - this.startedAt));
+  }
+
+  /**
+   * Whether the execution budget has been completely exhausted.
+   * @returns {boolean}
+   */
+  get isTimedOut() {
+    return this.remainingMs() <= 0;
+  }
+
+  /**
+   * Checks whether the isolate has at least `estimatedMs` left before the ceiling.
+   * Useful for aborting loops or checkpointing state before platform termination.
+   * @param {number} estimatedMs
+   * @returns {boolean}
+   */
+  hasTimeFor(estimatedMs) {
+    return this.remainingMs() > estimatedMs;
   }
 
   // --- Identifiers & Extraction ---
@@ -3720,6 +3958,209 @@ export class GramlessContext {
   }
 }
 
+// --- Module: batch.js ---
+/**
+ * Gramless Batch & Continuation Workflow Engine
+ * 
+ * Provides interactive, multi-pass batch job processing designed for V8 isolates
+ * with hard execution deadlines (e.g. 10.4s in TGCloud) and egress sandbox loopback firewalls.
+ * Automatically slices workloads into safe chunks, tracks session cursors,
+ * monitors isolate clock budgets, and renders seamless interactive continuation UI.
+ */
+
+
+export class BatchJob {
+  /**
+   * @param {Object} options
+   * @param {string} options.name Unique identifier for this batch job
+   * @param {number} [options.chunkSize=10] Maximum items to process per single isolate pass
+   * @param {number} [options.timeBudgetMs=8000] Maximum wall-clock time in ms per isolate pass
+   * @param {Function} options.processItem Process single item: async (item, ctx, state) => any
+   * @param {Function} [options.onProgress] Called when a pass finishes and pauses: async (info, ctx) => void
+   * @param {Function} [options.onComplete] Called when all items finish: async (summary, ctx) => void
+   * @param {string} [options.actionPrefix] Callback data prefix (defaults to 'batch:<name>:')
+   * @param {string} [options.sessionKey] Key inside ctx.session (defaults to '_batch_<name>')
+   */
+  constructor(options = {}) {
+    if (!options.name) {
+      throw new Error('BatchJob requires a unique "name" property');
+    }
+    if (typeof options.processItem !== 'function') {
+      throw new Error('BatchJob requires a "processItem" function');
+    }
+
+    this.name = options.name;
+    this.chunkSize = options.chunkSize || 10;
+    this.timeBudgetMs = options.timeBudgetMs || 8000;
+    this.processItem = options.processItem;
+    this.onProgress = options.onProgress || null;
+    this.onComplete = options.onComplete || null;
+    this.actionPrefix = options.actionPrefix || `batch:${this.name}:`;
+    this.sessionKey = options.sessionKey || `_batch_${this.name}`;
+  }
+
+  /**
+   * Generates inline keyboard markup with a continuation button for resuming the batch.
+   * 
+   * @param {number} cursor Current item index
+   * @param {number} total Total number of items
+   * @param {Object} [options={}]
+   * @param {string} [options.label] Custom button label
+   * @returns {Record<string, any>} InlineKeyboardMarkup
+   */
+  createContinuationMarkup(cursor, total, options = {}) {
+    const label = options.label || `Continue (${cursor}/${total}) ▶️`;
+    const callbackData = `${this.actionPrefix}${cursor}`;
+    return buildInlineKeyboard([
+      [{ text: label, data: callbackData }],
+    ]);
+  }
+
+  /**
+   * Executes a batch run for the provided items list within the current isolate's time budget.
+   * If time or chunk limit is reached before finishing, saves state and renders continuation UI.
+   * 
+   * @param {Array<any>} items Complete array of items to process
+   * @param {Record<string, any>} ctx Gramless context
+   * @param {number} [initialCursor] Starting cursor index
+   * @returns {Promise<{ completed: boolean, cursor: number, total: number, state: Record<string, any> }>}
+   */
+  async run(items, ctx, initialCursor = null) {
+    if (!Array.isArray(items)) {
+      throw new TypeError('BatchJob.run expects an array of items');
+    }
+
+    const total = items.length;
+    const sessionStore = ctx.session ? (ctx.session[this.sessionKey] || {}) : {};
+    let cursor = initialCursor !== null ? initialCursor : (sessionStore.cursor || 0);
+    const state = sessionStore.state || {};
+    const startCursor = cursor;
+    const startTime = Date.now();
+
+    while (cursor < total) {
+      // Clock & budget check: ensure at least 1500ms remain for state commit & network reply
+      const remainingTime = typeof ctx.remainingMs === 'function'
+        ? ctx.remainingMs()
+        : Math.max(0, this.timeBudgetMs - (Date.now() - startTime));
+
+      const isTimeExhausted = remainingTime < 1500;
+      const isChunkExhausted = (cursor - startCursor) >= this.chunkSize;
+
+      if ((isTimeExhausted || isChunkExhausted) && cursor > startCursor) {
+        // Pause batch pass: save progress
+        if (ctx.session) {
+          ctx.session[this.sessionKey] = {
+            cursor,
+            total,
+            state,
+            updatedAt: Date.now(),
+          };
+          if (typeof ctx.checkpoint === 'function') {
+            await ctx.checkpoint();
+          }
+        }
+
+        const progressInfo = {
+          job: this.name,
+          cursor,
+          total,
+          processedThisPass: cursor - startCursor,
+          completed: false,
+          state,
+          continuationMarkup: this.createContinuationMarkup(cursor, total),
+        };
+
+        if (this.onProgress) {
+          await this.onProgress(progressInfo, ctx);
+        } else if (typeof ctx.reply === 'function') {
+          await ctx.reply(
+            `⏳ <b>Batch in progress:</b> ${cursor}/${total} completed.\nTap below to continue:`,
+            {
+              parse_mode: 'HTML',
+              reply_markup: progressInfo.continuationMarkup,
+            }
+          );
+        }
+
+        return { completed: false, cursor, total, state };
+      }
+
+      // Process current item
+      await this.processItem(items[cursor], ctx, state);
+      cursor++;
+
+      // Periodic session checkpointing if available
+      if (ctx.session && typeof ctx.checkpoint === 'function' && cursor % 5 === 0) {
+        ctx.session[this.sessionKey] = { cursor, total, state, updatedAt: Date.now() };
+        await ctx.checkpoint();
+      }
+    }
+
+    // All items completed
+    if (ctx.session && ctx.session[this.sessionKey]) {
+      delete ctx.session[this.sessionKey];
+      if (typeof ctx.checkpoint === 'function') {
+        await ctx.checkpoint();
+      }
+    }
+
+    const summary = {
+      job: this.name,
+      cursor: total,
+      total,
+      processedThisPass: cursor - startCursor,
+      completed: true,
+      state,
+    };
+
+    if (this.onComplete) {
+      await this.onComplete(summary, ctx);
+    }
+
+    return summary;
+  }
+
+  /**
+   * Action handler middleware that listens for continuation button taps,
+   * retrieves the saved cursor, answers the button tap, and resumes execution.
+   * 
+   * @param {Function} [itemsResolver] Function returning the items array: async (ctx) => any[]
+   * @returns {Function} Handler function (ctx) => Promise<any>
+   */
+  middleware(itemsResolver = null) {
+    return async (ctx) => {
+      if (ctx.answer && typeof ctx.answer === 'function') {
+        await ctx.answer('Resuming batch processing...');
+      }
+
+      let cursor = null;
+      if (ctx.match && ctx.match[1]) {
+        const parsed = parseInt(ctx.match[1], 10);
+        if (!Number.isNaN(parsed)) cursor = parsed;
+      }
+
+      let items = [];
+      if (typeof itemsResolver === 'function') {
+        items = await itemsResolver(ctx);
+      } else if (ctx.session && ctx.session[this.sessionKey]?.items) {
+        items = ctx.session[this.sessionKey].items;
+      }
+
+      return this.run(items, ctx, cursor);
+    };
+  }
+}
+
+/**
+ * Creates a new BatchJob instance.
+ * 
+ * @param {Object} options
+ * @returns {BatchJob}
+ */
+export function createBatchJob(options) {
+  return new BatchJob(options);
+}
+
 // --- Module: router.js ---
 /**
  * Gramless Router & Dispatch Engine
@@ -3727,6 +4168,7 @@ export class GramlessContext {
  * Provides constant-time $O(1)$ command and callback dispatch, length-partitioned
  * prefix routing, and pre-compiled middleware pipelines.
  */
+
 
 
 
@@ -3838,6 +4280,8 @@ export class GramlessRouter {
     this.username = (options.username || options.botUsername || '').replace(/^@/, '');
     this.token = options.token || options.botToken || null;
     this.api = options.api || (this.token ? createDefaultApiClient(this.token) : null);
+    this.db = options.db || null;
+    this.executionTimeoutMs = options.executionTimeoutMs ?? 9500;
 
     /** @type {Array<Function>} */
     this.middlewares = [];
@@ -4048,9 +4492,14 @@ export class GramlessRouter {
    */
   async handle(input, ctx = {}, api = null) {
     const effectiveApi = api || this.api;
+    const effectiveCtx = {
+      ...ctx,
+      db: this.db || ctx.db,
+      executionTimeoutMs: ctx.executionTimeoutMs ?? this.executionTimeoutMs,
+    };
     const context = input instanceof GramlessContext
       ? input
-      : new GramlessContext(input, ctx, effectiveApi);
+      : new GramlessContext(input, effectiveCtx, effectiveApi);
 
     // If an outer filter predicate exists on this router and rejects, exit
     if (this.filter && !(await this.filter(context))) {
@@ -4241,16 +4690,27 @@ export class GramlessRouter {
    * Usage in tgcloud/handlers/message.js:
    *   export default bot.handler();
    * 
+   * @param {Object} [options={}]
+   * @param {any} [options.api] Optional pre-configured API client override
+   * @param {any} [options.db] Optional pre-configured database client override
+   * @param {number} [options.executionTimeoutMs] Optional execution budget override
    * @returns {Function}
    */
-  handler() {
-    return async (input, ctx) => {
+  handler(options = {}) {
+    if (options.api) this.api = options.api;
+    if (options.db) this.db = options.db;
+    if (options.executionTimeoutMs) this.executionTimeoutMs = options.executionTimeoutMs;
+
+    return async (input, ctx = {}) => {
       // If running inside TGCloud and no custom API client is set, lazy-import 'sdk'
       if (!this.api) {
         try {
           // Dynamic import of the virtual module in TGCloud
           const sdk = await import('sdk');
           this.api = sdk.api;
+          if (sdk.db && !this.db) {
+            this.db = sdk.db;
+          }
         } catch {
           // Non-cloud test environment; API can be injected per call
         }
@@ -4467,7 +4927,7 @@ export class GramlessRouter {
         }
 
         // Cooperative yield to event loop
-        await new Promise((resolve) => typeof setImmediate !== 'undefined' ? setImmediate(resolve) : setTimeout(resolve, 1));
+        await sleep(1);
       } catch (err) {
         if (!this._polling || err.name === 'AbortError' || this._pollingController?.signal.aborted) {
           break;
@@ -4478,7 +4938,7 @@ export class GramlessRouter {
           this.onError(err);
         }
         // Graceful backoff on network errors before retrying
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await sleep(3000);
       }
     }
   }

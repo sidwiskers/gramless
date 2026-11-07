@@ -183,3 +183,35 @@ export function rateLimit(options = {}) {
     return next();
   };
 }
+
+/**
+ * Declarative rate-limit shield middleware.
+ * Deflects rapid button double-taps and spam clicks during active cooldowns with an immediate
+ * alert toast (ctx.answer with show_alert: true) or reply, without executing downstream handlers.
+ * 
+ * @param {Object} [options={}]
+ * @param {number} [options.limit=1] Max requests within window
+ * @param {string|number} [options.window='1s'] Cooldown window (e.g. '1s', '2s', '500ms')
+ * @param {string|Function} [options.message='Please wait a moment before trying again.'] Toast or message to show
+ * @returns {Function}
+ */
+export function rateLimitGuard(options = {}) {
+  const customMessage = options.message || 'Please wait a moment before trying again.';
+  return rateLimit({
+    limit: options.limit ?? 1,
+    window: options.window ?? '1s',
+    ...options,
+    onLimitReached: async (ctx, { retryAfterMs }) => {
+      const secs = Math.max(1, Math.ceil(retryAfterMs / 1000));
+      const msg = typeof customMessage === 'function'
+        ? customMessage(ctx, { retryAfterMs, secs })
+        : customMessage;
+
+      if (ctx.data != null && typeof ctx.answer === 'function') {
+        await ctx.answer(msg, { show_alert: true });
+      } else if (typeof ctx.reply === 'function') {
+        await ctx.reply(msg);
+      }
+    },
+  });
+}

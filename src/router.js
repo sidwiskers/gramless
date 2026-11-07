@@ -8,6 +8,7 @@
 import { GramlessContext } from './context.js';
 import { RoutingError, PanicError, ApiError } from './errors.js';
 import { timingSafeEqual } from './init_data.js';
+import { sleep } from './isolate.js';
 
 /**
  * Creates a zero-dependency Telegram Bot API client using standard globalThis.fetch.
@@ -116,6 +117,8 @@ export class GramlessRouter {
     this.username = (options.username || options.botUsername || '').replace(/^@/, '');
     this.token = options.token || options.botToken || null;
     this.api = options.api || (this.token ? createDefaultApiClient(this.token) : null);
+    this.db = options.db || null;
+    this.executionTimeoutMs = options.executionTimeoutMs ?? 9500;
 
     /** @type {Array<Function>} */
     this.middlewares = [];
@@ -326,9 +329,14 @@ export class GramlessRouter {
    */
   async handle(input, ctx = {}, api = null) {
     const effectiveApi = api || this.api;
+    const effectiveCtx = {
+      ...ctx,
+      db: this.db || ctx.db,
+      executionTimeoutMs: ctx.executionTimeoutMs ?? this.executionTimeoutMs,
+    };
     const context = input instanceof GramlessContext
       ? input
-      : new GramlessContext(input, ctx, effectiveApi);
+      : new GramlessContext(input, effectiveCtx, effectiveApi);
 
     // If an outer filter predicate exists on this router and rejects, exit
     if (this.filter && !(await this.filter(context))) {
@@ -519,16 +527,27 @@ export class GramlessRouter {
    * Usage in tgcloud/handlers/message.js:
    *   export default bot.handler();
    * 
+   * @param {Object} [options={}]
+   * @param {any} [options.api] Optional pre-configured API client override
+   * @param {any} [options.db] Optional pre-configured database client override
+   * @param {number} [options.executionTimeoutMs] Optional execution budget override
    * @returns {Function}
    */
-  handler() {
-    return async (input, ctx) => {
+  handler(options = {}) {
+    if (options.api) this.api = options.api;
+    if (options.db) this.db = options.db;
+    if (options.executionTimeoutMs) this.executionTimeoutMs = options.executionTimeoutMs;
+
+    return async (input, ctx = {}) => {
       // If running inside TGCloud and no custom API client is set, lazy-import 'sdk'
       if (!this.api) {
         try {
           // Dynamic import of the virtual module in TGCloud
           const sdk = await import('sdk');
           this.api = sdk.api;
+          if (sdk.db && !this.db) {
+            this.db = sdk.db;
+          }
         } catch {
           // Non-cloud test environment; API can be injected per call
         }
@@ -745,7 +764,7 @@ export class GramlessRouter {
         }
 
         // Cooperative yield to event loop
-        await new Promise((resolve) => typeof setImmediate !== 'undefined' ? setImmediate(resolve) : setTimeout(resolve, 1));
+        await sleep(1);
       } catch (err) {
         if (!this._polling || err.name === 'AbortError' || this._pollingController?.signal.aborted) {
           break;
@@ -756,7 +775,7 @@ export class GramlessRouter {
           this.onError(err);
         }
         // Graceful backoff on network errors before retrying
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await sleep(3000);
       }
     }
   }

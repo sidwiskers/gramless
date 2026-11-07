@@ -230,11 +230,29 @@ export function session(options = {}) {
     return mutex.acquire(key, async () => {
       // 1. Fetch current committed state
       const savedData = await store.get(key);
-      const originalSnapshot = safeClone(savedData);
+      let originalSnapshot = safeClone(savedData);
 
       // 2. Working copy for handler execution
       let workingCopy = savedData !== null ? safeClone(savedData) : initial();
       ctx.session = workingCopy;
+
+      // Expose explicit mid-execution checkpointing to persist progress before isolate timeouts
+      ctx.saveSession = async () => {
+        if (ctx.session === null) {
+          await store.delete(key);
+        } else {
+          await store.set(key, ctx.session);
+          originalSnapshot = safeClone(ctx.session);
+        }
+      };
+
+      ctx.checkpoint = async (updates) => {
+        if (updates && typeof updates === 'object') {
+          Object.assign(ctx.session, updates);
+        }
+        await ctx.saveSession();
+        return ctx.session;
+      };
 
       try {
         // 3. Execute downstream handlers

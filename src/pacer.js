@@ -9,6 +9,8 @@
  * Engineered for V8 Isolates and TGCloud with zero external dependencies.
  */
 
+import { sleep } from './isolate.js';
+
 const DEFAULT_PACED_METHODS = new Set([
   'sendMessage',
   'sendPhoto',
@@ -157,7 +159,7 @@ export class ChatPacer {
     if (chatId === null || chatId === undefined) {
       const globalDelay = this.globalTokenBucket.acquireDelay();
       if (globalDelay > 0) {
-        await new Promise((r) => setTimeout(r, globalDelay));
+        await sleep(globalDelay);
       }
       await this._acquireSlot();
       try {
@@ -189,7 +191,7 @@ export class ChatPacer {
 
           const totalDelay = Math.max(chatDelay, globalDelay);
           if (totalDelay > 0) {
-            await new Promise((r) => setTimeout(r, totalDelay));
+            await sleep(totalDelay);
           }
 
           await this._acquireSlot();

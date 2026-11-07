@@ -33,7 +33,7 @@ All measurements are conducted using Node.js's high-resolution performance timer
 | :--- | :--- | :--- |
 | **Dependencies** | 15–40 packages (`node_modules` bloat) | **Zero (0)** |
 | **Cold-Start Time** | 40ms – 180ms | **< 3ms** |
-| **Unpacked Package Size** | ~15 MB – 45 MB (`node_modules`) | **~363 KB (Complete package) / 144 KB (Standalone bundle)** |
+| **Unpacked Package Size** | ~15 MB – 45 MB (`node_modules`) | **~380 KB (Complete package) / 165 KB (Standalone bundle)** |
 | **Compressed Tarball Size** | ~3.0 MB – 8.0 MB | **~86 KB** |
 | **Session Isolation** | In-memory cache or async uncoordinated DB writes | **ACID Transactional Rollback + Mutex Concurrency** |
 | **Routing Algorithm** | Linear $O(N)$ middleware arrays | **$O(1)$ Hash Map & Length-Partitioned Prefix Trie** |

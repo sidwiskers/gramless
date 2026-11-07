@@ -158,6 +158,13 @@ export class GramlessContext {
     this.update = ctx.update || {};
     this.api = api;
 
+    // Execution clock & deadline budget
+    this.startedAt = ctx.startedAt || Date.now();
+    this.executionTimeoutMs = ctx.executionTimeoutMs ?? (ctx.deadline ? ctx.deadline - this.startedAt : 9500);
+
+    // Database injection support
+    this.db = ctx.db || api?.db || null;
+
     // Fast-access caches
     this.match = null;
     this.params = {};
@@ -166,6 +173,48 @@ export class GramlessContext {
     this.command = null;
     this.payload = '';
     this.args = [];
+  }
+
+  /**
+   * Elapsed execution time in milliseconds since the start of this update.
+   * @returns {number}
+   */
+  get elapsedMs() {
+    return Date.now() - this.startedAt;
+  }
+
+  /**
+   * Approximate wall-clock deadline timestamp (ms) for this isolate execution.
+   * @returns {number}
+   */
+  get deadline() {
+    return this.startedAt + this.executionTimeoutMs;
+  }
+
+  /**
+   * Remaining execution time in milliseconds before reaching the isolate budget.
+   * @returns {number}
+   */
+  remainingMs() {
+    return Math.max(0, this.executionTimeoutMs - (Date.now() - this.startedAt));
+  }
+
+  /**
+   * Whether the execution budget has been completely exhausted.
+   * @returns {boolean}
+   */
+  get isTimedOut() {
+    return this.remainingMs() <= 0;
+  }
+
+  /**
+   * Checks whether the isolate has at least `estimatedMs` left before the ceiling.
+   * Useful for aborting loops or checkpointing state before platform termination.
+   * @param {number} estimatedMs
+   * @returns {boolean}
+   */
+  hasTimeFor(estimatedMs) {
+    return this.remainingMs() > estimatedMs;
   }
 
   // --- Identifiers & Extraction ---

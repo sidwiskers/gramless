@@ -5,19 +5,30 @@
  * sleeps for the requested retry_after seconds, and retries the outbound call.
  */
 
+import { sleep, isIsolateRuntime } from './isolate.js';
+import { FloodWaitError } from './errors.js';
+
 /**
  * Executes a function with automatic retry on Telegram 429 flood control errors.
+ * 
+ * In serverless isolates, retry delays exceeding maxServerlessDelay (default 1.5s)
+ * abort immediately and throw FloodWaitError, preventing fatal platform isolate timeouts.
  * 
  * @param {Function} callFn Async function to invoke
  * @param {Object} [options={}]
  * @param {number} [options.maxRetries=3] Maximum number of retry attempts
  * @param {number} [options.maxDelay=60000] Maximum acceptable retry_after wait in ms
+ * @param {number} [options.maxServerlessDelay=1500] Maximum acceptable wait in serverless isolates
+ * @param {boolean} [options.serverless] Force serverless ceiling behavior
  * @param {Function} [options.onRetry] Hook called before sleeping: (info) => void
  * @returns {Promise<any>}
  */
 export async function executeWithRetry(callFn, options = {}) {
   const maxRetries = options.maxRetries !== undefined ? options.maxRetries : 3;
-  const maxDelay = options.maxDelay !== undefined ? options.maxDelay : 60000;
+  const isServerless = options.serverless ?? isIsolateRuntime();
+  const maxDelay = isServerless
+    ? (options.maxServerlessDelay ?? 1500)
+    : (options.maxDelay ?? 60000);
   const onRetry = options.onRetry || null;
 
   let attempt = 0;
@@ -43,9 +54,20 @@ export async function executeWithRetry(callFn, options = {}) {
             });
           }
 
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await sleep(delayMs);
           continue;
         }
+
+        // Delay exceeds ceiling: abort and emit structured FloodWaitError
+        const desc = err.description
+          ? `${err.description} (${retryAfter}s exceeds serverless isolate ceiling)`
+          : `Telegram flood wait (${retryAfter}s exceeds serverless isolate ceiling)`;
+        throw new FloodWaitError(
+          err.method || 'unknown',
+          desc,
+          retryAfter,
+          err.parameters || {}
+        );
       }
 
       throw err;

@@ -93,6 +93,12 @@ export class ApiError extends GramlessError {
   readonly isMediaRestricted: boolean;
 }
 
+export class FloodWaitError extends ApiError {
+  retryAfter: number;
+  retryAfterMs: number;
+  constructor(retryAfterSeconds: number, description?: string);
+}
+
 export function isBlockedError(err: unknown): boolean;
 export function isNotModifiedError(err: unknown): boolean;
 export function isPermissionError(err: unknown): boolean;
@@ -121,6 +127,9 @@ export class GramlessContext {
   params: Record<string, string>;
   state: Record<string, any>;
   session: any;
+  db?: any;
+  startedAt: number;
+  executionTimeoutMs: number;
   command: string | null;
   payload: string;
   args: string[];
@@ -161,6 +170,14 @@ export class GramlessContext {
   readonly isPrivate: boolean;
   readonly isGroup: boolean;
   readonly isChannel: boolean;
+  readonly elapsedMs: number;
+  readonly deadline: number;
+  readonly isTimedOut: boolean;
+
+  remainingMs(): number;
+  hasTimeFor(estimatedMs?: number): boolean;
+  saveSession(): Promise<void>;
+  checkpoint(updates?: Record<string, any>): Promise<void>;
 
   call(method: string, params?: Record<string, any>): Promise<any>;
 
@@ -251,6 +268,8 @@ export class GramlessRouter {
     botToken?: string;
     filter?: FilterPredicate;
     api?: any;
+    db?: any;
+    executionTimeoutMs?: number;
     onError?: (err: Error, ctx: GramlessContext) => any;
     username?: string;
     botUsername?: string;
@@ -265,7 +284,12 @@ export class GramlessRouter {
   fallback(...handlers: HandlerFunction[]): this;
   compile(): this;
   handle(input: any, ctx?: any, api?: any): Promise<boolean>;
-  handler(): (input: any, ctx: any) => Promise<any>;
+  handler(options?: {
+    api?: any;
+    db?: any;
+    executionTimeoutMs?: number;
+    onError?: (err: Error) => any;
+  }): (input: any, ctx?: any, executionCtx?: any) => Promise<any>;
   fetch(options?: {
     token?: string;
     secretToken?: string;
@@ -425,14 +449,27 @@ export const RateLimitKey: {
   byChatUser(ctx: GramlessContext): string | null;
 };
 
-export function rateLimit(options?: {
+export interface RateLimitOptions {
   limit?: number;
   window?: string | number;
   key?: (ctx: GramlessContext) => string | null;
   store?: MemoryRateLimitStore;
   skip?: (ctx: GramlessContext) => boolean | Promise<boolean>;
   onLimitReached?: (ctx: GramlessContext, info: { limit: number; windowMs: number; retryAfterMs: number; resetMs: number }) => Promise<void> | void;
-}): MiddlewareFunction;
+}
+
+export function rateLimit(options?: RateLimitOptions): MiddlewareFunction;
+
+export interface RateLimitGuardOptions {
+  limit?: number;
+  window?: string | number;
+  message?: string | ((ctx: GramlessContext, info: { retryAfterMs: number; secs: number }) => string);
+  key?: (ctx: GramlessContext) => string | null;
+  store?: MemoryRateLimitStore;
+  skip?: (ctx: GramlessContext) => boolean | Promise<boolean>;
+}
+
+export function rateLimitGuard(options?: RateLimitGuardOptions): MiddlewareFunction;
 
 // --- i18n ---
 export class I18nEngine {
@@ -526,14 +563,22 @@ export class MediaGroupAggregator {
 export function mediaGroup(options?: { timeout?: number }): MiddlewareFunction;
 
 // --- Auto-Retry ---
+export interface AutoRetryOptions {
+  maxRetries?: number;
+  maxDelay?: number;
+  maxServerlessDelay?: number;
+  serverless?: boolean;
+  onRetry?: (info: any) => void;
+}
+
 export function executeWithRetry<T>(
   callFn: () => Promise<T>,
-  options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }
+  options?: AutoRetryOptions
 ): Promise<T>;
 
-export function wrapApi(api: any, options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }): any;
+export function wrapApi(api: any, options?: AutoRetryOptions): any;
 
-export function autoRetry(options?: { maxRetries?: number; maxDelay?: number; onRetry?: (info: any) => void }): MiddlewareFunction;
+export function autoRetry(options?: AutoRetryOptions): MiddlewareFunction;
 
 // --- Stateless Question ---
 export function wrapQuestionText(tag: string, text: string): string;
@@ -638,6 +683,55 @@ export function pacer(
     methods?: Set<string> | string[];
   }
 ): MiddlewareFunction;
+
+// --- Isolate Runtime Primitives ---
+export function isIsolateRuntime(): boolean;
+export function sleep(ms: number): Promise<void>;
+export function safeSetTimeout(callback: Function, ms?: number): any;
+export function safeClearTimeout(handle: any): void;
+
+// --- Batch & Continuation Workflow Engine ---
+export interface BatchJobOptions<T = any> {
+  name: string;
+  chunkSize?: number;
+  timeBudgetMs?: number;
+  processItem: (item: T, ctx: GramlessContext, state: Record<string, any>) => Promise<any> | any;
+  onProgress?: (info: { cursor: number; total: number; state: Record<string, any>; itemsProcessed: number }, ctx: GramlessContext) => Promise<void> | void;
+  onComplete?: (summary: { total: number; state: Record<string, any> }, ctx: GramlessContext) => Promise<void> | void;
+  actionPrefix?: string;
+  sessionKey?: string;
+}
+
+export class BatchJob<T = any> {
+  name: string;
+  chunkSize: number;
+  timeBudgetMs: number;
+  processItem: (item: T, ctx: GramlessContext, state: Record<string, any>) => Promise<any> | any;
+  onProgress: ((info: { cursor: number; total: number; state: Record<string, any>; itemsProcessed: number }, ctx: GramlessContext) => Promise<void> | void) | null;
+  onComplete: ((summary: { total: number; state: Record<string, any> }, ctx: GramlessContext) => Promise<void> | void) | null;
+  actionPrefix: string;
+  sessionKey: string;
+
+  constructor(options: BatchJobOptions<T>);
+
+  createContinuationMarkup(
+    cursor: number,
+    total: number,
+    options?: { label?: string }
+  ): { inline_keyboard: Array<Array<Record<string, any>>> };
+
+  run(
+    items: T[],
+    ctx: GramlessContext,
+    initialCursor?: number | null
+  ): Promise<{ completed: boolean; cursor: number; total: number; state: Record<string, any> }>;
+
+  middleware(
+    itemsResolver?: ((ctx: GramlessContext) => Promise<T[]> | T[]) | null
+  ): (ctx: GramlessContext) => Promise<any>;
+}
+
+export function createBatchJob<T = any>(options: BatchJobOptions<T>): BatchJob<T>;
 
 // --- Gramless Lab & Hermetic Testkit ---
 export interface VirtualActorOptions {

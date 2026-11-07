@@ -5,6 +5,8 @@
  * into a single consolidated handler execution, preventing duplicate responses.
  */
 
+import { safeSetTimeout, safeClearTimeout } from './isolate.js';
+
 export class MediaGroupAggregator {
   /**
    * @param {Object} [options={}]
@@ -32,8 +34,8 @@ export class MediaGroupAggregator {
       let batch = this.batches.get(mediaGroupId);
 
       const scheduleFlush = () => {
-        clearTimeout(batch.timer);
-        batch.timer = setTimeout(async () => {
+        safeClearTimeout(batch.timer);
+        batch.timer = safeSetTimeout(async () => {
           this.batches.delete(mediaGroupId);
           const mediaItems = batch.contexts.map(c => c.message || c.raw);
           batch.firstCtx.mediaGroup = mediaItems;

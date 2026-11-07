@@ -10,6 +10,7 @@ const distDir = path.join(rootDir, 'dist');
 
 // Topological order of files
 const orderedFiles = [
+  'isolate.js',
   'errors.js',
   'filters.js',
   'format.js',
@@ -26,6 +27,7 @@ const orderedFiles = [
   'endpoint.js',
   'session.js',
   'context.js',
+  'batch.js',
   'router.js',
   'deeplink.js',
   'fsm.js',
