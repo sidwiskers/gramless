@@ -1,6 +1,6 @@
 {
   "name": "create-gramless",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Scaffold a production Telegram bot with Gramless",
   "type": "module",
   "bin": {
