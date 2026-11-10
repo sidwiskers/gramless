@@ -52,6 +52,36 @@ bot.action(/^order:(\d+):cancel$/, async (ctx) => {
 
 ---
 
+## HTML Widget Query Routing (Bot API 10.4)
+
+Queries sent from interactive HTML widgets are routed via `bot.widgetQuery(trigger, ...)` or shorthand `bot.widget(trigger, ...)`:
+
+```javascript
+// 1. Exact data match:
+bot.widget('poll:vote:option_a', async (ctx) => {
+  await ctx.answerWidgetQuery('{"status": "recorded"}');
+  await ctx.editMessageWidgetData({ data: 'poll_state:voted' });
+});
+
+// 2. Length-sorted prefix match:
+bot.widgetQuery('cart:', async (ctx) => {
+  await ctx.answerWidgetQuery('{"cart_updated": true}');
+});
+
+// 3. Regular Expression match:
+bot.widgetQuery(/^candidate:(\w+)$/, async (ctx) => {
+  const candidate = ctx.match[1];
+  await ctx.answerWidgetQuery(`{"selected": "${candidate}"}`);
+});
+
+// 4. Shared widget updates:
+bot.on('shared_widget_query', async (ctx) => {
+  await ctx.answerWidgetQuery('{"shared": true}');
+});
+```
+
+---
+
 ## Middleware Pipeline
 
 Gramless supports Onion-model middleware. Middlewares are compiled at registration time into a single executable closure chain:

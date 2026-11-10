@@ -49,6 +49,44 @@ await ctx.sendDice('🎯');
 
 ---
 
+## Interactive HTML Widgets & Ephemeral Replies (Bot API 10.4)
+
+```javascript
+// 1. Send an interactive HTML widget (1-32,768 bytes, private chats):
+await ctx.sendWidget('<div><h3>Vote 2026</h3><button>Candidate A</button></div>', {
+  widget_id: 'voting_widget',
+  cache_time: 300,
+});
+
+// 2. Re-send a shared widget:
+await ctx.sendSharedWidget('shared_leaderboard_xyz');
+
+// 3. Ephemeral callback reply without passing chat_id:
+await ctx.replyEphemeral('This reply is only visible to you!');
+
+// 4. Quoting rich messages:
+await ctx.reply('Quoting rich block', {
+  quote_rich_texts: true,
+  quote: 'Target quote',
+});
+```
+
+---
+
+## Execution Budget & Transactional Checkpointing
+
+```javascript
+// Inspect time remaining before platform isolate termination:
+console.log(`Remaining budget: ${ctx.remainingMs()}ms`);
+
+if (ctx.hasTimeFor(1500)) {
+  // Commit intermediate session state to SQLite immediately:
+  await ctx.checkpoint();
+}
+```
+
+---
+
 ## Direct API Access (`ctx.call`)
 
 Any method supported by the Telegram Bot API can be called directly:

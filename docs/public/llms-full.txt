@@ -319,6 +319,36 @@ bot.action(/^order:(\d+):cancel$/, async (ctx) => {
 
 ---
 
+## HTML Widget Query Routing (Bot API 10.4)
+
+Queries sent from interactive HTML widgets are routed via `bot.widgetQuery(trigger, ...)` or shorthand `bot.widget(trigger, ...)`:
+
+```javascript
+// 1. Exact data match:
+bot.widget('poll:vote:option_a', async (ctx) => {
+  await ctx.answerWidgetQuery('{"status": "recorded"}');
+  await ctx.editMessageWidgetData({ data: 'poll_state:voted' });
+});
+
+// 2. Length-sorted prefix match:
+bot.widgetQuery('cart:', async (ctx) => {
+  await ctx.answerWidgetQuery('{"cart_updated": true}');
+});
+
+// 3. Regular Expression match:
+bot.widgetQuery(/^candidate:(\w+)$/, async (ctx) => {
+  const candidate = ctx.match[1];
+  await ctx.answerWidgetQuery(`{"selected": "${candidate}"}`);
+});
+
+// 4. Shared widget updates:
+bot.on('shared_widget_query', async (ctx) => {
+  await ctx.answerWidgetQuery('{"shared": true}');
+});
+```
+
+---
+
 ## Middleware Pipeline
 
 Gramless supports Onion-model middleware. Middlewares are compiled at registration time into a single executable closure chain:
@@ -392,6 +422,44 @@ await ctx.sendAnimation(gifId);
 await ctx.chatAction('typing');
 await ctx.sendPoll('Poll Question', ['Option A', 'Option B']);
 await ctx.sendDice('🎯');
+```
+
+---
+
+## Interactive HTML Widgets & Ephemeral Replies (Bot API 10.4)
+
+```javascript
+// 1. Send an interactive HTML widget (1-32,768 bytes, private chats):
+await ctx.sendWidget('<div><h3>Vote 2026</h3><button>Candidate A</button></div>', {
+  widget_id: 'voting_widget',
+  cache_time: 300,
+});
+
+// 2. Re-send a shared widget:
+await ctx.sendSharedWidget('shared_leaderboard_xyz');
+
+// 3. Ephemeral callback reply without passing chat_id:
+await ctx.replyEphemeral('This reply is only visible to you!');
+
+// 4. Quoting rich messages:
+await ctx.reply('Quoting rich block', {
+  quote_rich_texts: true,
+  quote: 'Target quote',
+});
+```
+
+---
+
+## Execution Budget & Transactional Checkpointing
+
+```javascript
+// Inspect time remaining before platform isolate termination:
+console.log(`Remaining budget: ${ctx.remainingMs()}ms`);
+
+if (ctx.hasTimeFor(1500)) {
+  // Commit intermediate session state to SQLite immediately:
+  await ctx.checkpoint();
+}
 ```
 
 ---
@@ -732,7 +800,7 @@ Do not use any third-party dependencies.
 
 # Context API Reference
 
-Full method specification for `GramlessContext`.
+Full method and property specification for `GramlessContext`.
 
 ---
 
@@ -745,16 +813,26 @@ Full method specification for `GramlessContext`.
 | `ctx.chatType` | `string \| null` | `'private'`, `'group'`, `'supergroup'`, or `'channel'` |
 | `ctx.text` | `string \| null` | Incoming message text or empty string |
 | `ctx.caption` | `string \| null` | Media caption or empty string |
-| `ctx.callbackData` | `string \| null` | Inline button callback payload |
+| `ctx.data` | `string \| null` | Inline button callback payload or widget query data |
 | `ctx.state` | `Record<string, any>` | Ephemeral update state for custom middlewares |
 | `ctx.session` | `any` | Transactional persistent session data |
+| `ctx.widgetQuery` | `WidgetQuery \| null` | Incoming widget interaction query (Bot API 10.4) |
+| `ctx.sharedWidgetQuery` | `SharedWidgetQuery \| null` | Incoming shared widget query (Bot API 10.4) |
+| `ctx.widget` | `Widget \| null` | HTML widget payload attached to a message |
+| `ctx.tonWalletTransfer` | `TonWalletTransfer \| null` | TON blockchain transfer service message data |
+| `ctx.paidMessagesWaived` | `PaidMessagesWaived \| null` | Waived paid messages count metadata |
+| `ctx.elapsedMs` | `number` | Wall-clock milliseconds elapsed since update began |
+| `ctx.deadline` | `number` | Unix timestamp of hard platform isolate execution deadline |
 
 ---
 
 ## Outbound Methods
 
 ### Message & Media
-- `ctx.reply(text, options)`: Sends message to current chat. Supports `buttons: [...]` shorthand.
+- `ctx.reply(text, options)`: Sends message to current chat. Supports `buttons: [...]` shorthand, `ephemeral: true`, and `quote_rich_texts: true`.
+- `ctx.replyEphemeral(text, options)`: Sends an ephemeral message visible only to the active user; automatically omits `chat_id` and targets callback queries (Bot API 10.4).
+- `ctx.replyWithHtml(html, options)`: Shorthand to send HTML formatted text.
+- `ctx.replyWithMarkdown(markdown, options)`: Shorthand to send MarkdownV2 formatted text.
 - `ctx.edit(text, options)`: Edits current message text.
 - `ctx.editCaption(caption, options)`: Edits current message caption.
 - `ctx.editKeyboard(keyboard)`: Edits current message reply markup.
@@ -764,11 +842,23 @@ Full method specification for `GramlessContext`.
 - `ctx.sendDocument(doc, options)`: Sends file document.
 - `ctx.sendAnimation(animation, options)`: Sends animation/GIF.
 
+### HTML Widgets (Bot API 10.4)
+- `ctx.sendWidget(html, options)`: Sends private interactive HTML widget (1–32,768 bytes, auto-validated, protected from forwarding).
+- `ctx.sendSharedWidget(widgetId, options)`: Re-sends a shared widget created by the bot.
+- `ctx.answerWidgetQuery(data, options)`: Responds to an incoming query sent from an HTML widget.
+- `ctx.editMessageWidgetData(options)`: Updates binary data of a widget attached to a message.
+- `ctx.editSharedWidgetData(widgetId, publicData, options)`: Updates global public state data of a shared widget with caching.
+
+### Unique Gifts & Themes (Bot API 10.4)
+- `ctx.getUniqueGift(name)`: Retrieves unique gift model by name.
+- `ctx.deleteBusinessAccountGift(businessConnectionId, ownedGiftId)`: Removes a gift from a connected business account.
+- `ctx.getChatShareThemeBackdrops()`: Retrieves available theme backdrops for chat sharing.
+
 ### Interactivity & Reactions
 - `ctx.react(emoji)`: Adds a native emoji reaction to the message.
 - `ctx.chatAction(action)`: Broadcasts action (e.g. `'typing'`, `'upload_photo'`).
 - `ctx.answer(text, options)`: Dismisses callback query loading indicator.
-- `ctx.alert(text)`: Displays an alert modal for callback query.
+- `ctx.alert(text)`: Displays an alert modal toast for callback queries.
 
 ### Moderation & Administration
 - `ctx.banMember(userId, options)`: Bans a user from the chat.
@@ -777,6 +867,11 @@ Full method specification for `GramlessContext`.
 - `ctx.restrictMember(userId, options)`: Restricts chat member permissions.
 - `ctx.delete()`: Deletes current message.
 - `ctx.pin(options)` / `ctx.unpin()`: Pins or unpins current message.
+
+### Execution Clock & Checkpointing
+- `ctx.remainingMs()`: Returns milliseconds remaining before hard isolate execution deadline.
+- `ctx.hasTimeFor(bufferMs)`: Returns `true` if remaining budget exceeds `bufferMs`.
+- `await ctx.checkpoint()`: Immediately commits intermediate session state to SQLite before isolate timeout.
 
 ### Direct Method Invocation
 - `ctx.call(method, params)`: Calls any Telegram Bot API method directly.
@@ -809,15 +904,28 @@ Returns a predicate that negates the result of the provided predicate.
 
 ## Content Filters
 
-- `Filter.hasText`: Passes if update contains non-empty text.
-- `Filter.hasPhoto`: Passes if update contains photo attachments.
-- `Filter.hasVideo`: Passes if update contains video attachments.
-- `Filter.hasVoice`: Passes if update contains voice notes.
-- `Filter.hasAudio`: Passes if update contains audio files.
-- `Filter.hasDocument`: Passes if update contains document files.
-- `Filter.hasSticker`: Passes if update contains stickers.
-- `Filter.hasAnimation`: Passes if update contains animations/GIFs.
-- `Filter.hasLocation`: Passes if update contains location coordinates.
+- `Filter.hasText` (`Filter.text`): Passes if update contains non-empty text.
+- `Filter.hasPhoto` (`Filter.photo`): Passes if update contains photo attachments.
+- `Filter.hasVideo` (`Filter.video`): Passes if update contains video attachments.
+- `Filter.hasVoice` (`Filter.voice`): Passes if update contains voice notes.
+- `Filter.hasAudio` (`Filter.audio`): Passes if update contains audio files.
+- `Filter.hasDocument` (`Filter.document`): Passes if update contains document files.
+- `Filter.hasSticker` (`Filter.sticker`): Passes if update contains stickers.
+- `Filter.hasAnimation` (`Filter.animation`): Passes if update contains animations/GIFs.
+- `Filter.hasLocation` (`Filter.location`): Passes if update contains location coordinates.
+- `Filter.hasContact` (`Filter.contact`): Passes if update contains contacts.
+- `Filter.hasPoll` (`Filter.poll`): Passes if update contains a poll.
+- `Filter.hasDice` (`Filter.dice`): Passes if update contains animated dice.
+
+---
+
+## Bot API 10.4 Filters
+
+- `Filter.hasWidget` (`Filter.widget`): Passes if the message contains an attached HTML widget.
+- `Filter.isWidgetQuery` (`Filter.widgetQuery`): Passes if update is an incoming query from an HTML widget.
+- `Filter.isSharedWidgetQuery` (`Filter.sharedWidgetQuery`): Passes if update is an incoming query from a shared HTML widget.
+- `Filter.hasTonTransfer` (`Filter.tonTransfer`): Passes if update is a TON blockchain transfer service message.
+- `Filter.hasPaidMessagesWaived` (`Filter.paidMessagesWaived`): Passes if update is a paid messages waived service notification.
 
 ---
 
@@ -826,6 +934,15 @@ Returns a predicate that negates the result of the provided predicate.
 - `Filter.private`: Passes if message is from a 1-on-1 private chat.
 - `Filter.group`: Passes if chat type is `'group'` or `'supergroup'`.
 - `Filter.channel`: Passes if chat type is `'channel'`.
+
+---
+
+## Parameterized Filters
+
+- `Filter.textPrefix(prefix)`: Matches messages starting with a specific prefix string.
+- `Filter.textMatches(regex)`: Matches messages satisfying a regular expression.
+- `Filter.fromUsers(...userIds)`: Matches updates from specified user IDs.
+- `Filter.inChats(...chatIds)`: Matches updates originating in specified chat IDs.
 
 ---
 
@@ -841,7 +958,7 @@ API specification for deterministic, offline testing via `gramless/testkit`.
 ---
 
 ## `createLab(bot)`
-Creates a virtual in-process Telegram environment.
+Creates a virtual in-process Telegram testing harness.
 
 ```javascript
 import { createLab } from 'gramless/testkit';
@@ -857,24 +974,32 @@ Creates a virtual user actor.
 
 ### Actor Simulation Methods
 - `await actor.command(commandText)`: Simulates sending a command (e.g. `'/start'`).
-- `await actor.text(text)`: Simulates sending standard message text.
+- `await actor.message(text, [options])`: Simulates sending standard message text.
 - `await actor.click(callbackData)`: Simulates clicking an inline keyboard button.
+- `await actor.inline(query, [offset])`: Simulates an inline search query.
+- `await actor.queryWidget(data, [options])`: Simulates an incoming query from an HTML widget (Bot API 10.4).
+- `await actor.querySharedWidget(widgetId, data, [options])`: Simulates an incoming query from a shared HTML widget (Bot API 10.4).
 
 ---
 
-## Matchers
+## Fluent Matchers
 
-- `Sent(pattern, options)`: Asserts that a message matching string or regex pattern was sent.
-- `Edited(pattern)`: Asserts that an existing message was edited with matching text.
-- `Answered([pattern])`: Asserts that `answerCallbackQuery` was called, optionally matching text.
+Actor action results return a chainable `ActorExpectation`:
+
+- `res.wantSent(pattern, [options])`: Asserts that a message matching string or regex pattern was sent.
+- `res.wantEdited(pattern)`: Asserts that an existing message was edited with matching text.
+- `res.wantAnswered([pattern])`: Asserts that `answerCallbackQuery` was called.
+- `res.wantWidgetSent([pattern])`: Asserts that an HTML widget message was sent (`sendWidget` or `sendSharedWidget`).
+- `res.wantWidgetQueryAnswered([dataPattern])`: Asserts that `answerWidgetQuery` was called with matching data.
+- `res.wantInlineAnswered([expectedCount])`: Asserts that `answerInlineQuery` was called.
+- `res.want(matcherFn)`: Custom assertion matcher function `(calls) => void`.
 
 ```javascript
 const res = await alice.command('/menu');
-res.want(Sent('Main Menu:'));
+res.wantSent('Main Menu:');
 
-const clickRes = await alice.click('btn_help');
-clickRes.want(Answered());
-clickRes.want(Edited('Help contents'));
+const widgetRes = await alice.queryWidget('action:vote:a');
+widgetRes.wantWidgetQueryAnswered('voted');
 ```
 
 ---
