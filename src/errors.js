@@ -145,9 +145,9 @@ export class ApiError extends GramlessError {
     return this.errorCode === 400 && !this.isReplyNotFound && /message to (?:edit|delete) not found|message can't be deleted|message not found/i.test(this.description);
   }
 
-  /** True if an inline callback query expired before being answered */
+  /** True if an inline callback query or widget query expired before being answered */
   get isQueryTooOld() {
-    return this.errorCode === 400 && /query is too old/i.test(this.description);
+    return this.errorCode === 400 && /(?:widget\s+)?query is too old/i.test(this.description);
   }
 
   /** True if the request was throttled by Telegram rate limits (429) */
@@ -219,6 +219,16 @@ export function isNotFoundError(err) {
 export function isParseEntityError(err) {
   return err instanceof ApiError ? err.isParseEntityError : false;
 }
+
+/**
+ * Checks if an error was caused by an expired callback query or widget query.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isQueryTooOldError(err) {
+  return err instanceof ApiError ? err.isQueryTooOld : false;
+}
+
 
 /**
  * Thrown when input validation fails (e.g. in RPC endpoints or route parameters).

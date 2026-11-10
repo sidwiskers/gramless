@@ -1,8 +1,8 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-162%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-173%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-8.x%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog)
+[![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.4%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#november-9-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/types-included-blue.svg)](types/index.d.ts)
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
@@ -774,6 +774,83 @@ export default bot.handler({
   db,
   executionTimeoutMs: 9500,
 });
+```
+
+---
+
+## Telegram Bot API 10.4 Support
+
+Gramless includes complete first-class support for the Telegram Bot API 10.4 update:
+
+### 1. HTML Widgets (`sendWidget` & `sendSharedWidget`)
+Send interactive HTML widgets (1–32,768 bytes, auto-compressed with zlib when > 512 bytes) protected from forwarding:
+```javascript
+// Send a private HTML widget:
+await ctx.sendWidget('<div><h3>Interactive Poll</h3><button>Vote Option A</button></div>', {
+  widget_id: 'poll_widget_1',
+  cache_time: 300,
+});
+
+// Re-send a shared widget created by the bot:
+await ctx.sendSharedWidget('shared_leaderboard_xyz');
+```
+
+### 2. Widget Query Routing (`bot.widgetQuery` & `bot.widget`)
+Handle incoming queries sent from HTML widgets with exact, prefix, regex, or catch-all handlers:
+```javascript
+// Exact match:
+bot.widget('poll:vote:option_a', async (ctx) => {
+  await ctx.answerWidgetQuery('{"status": "voted", "option": "A"}');
+  await ctx.editMessageWidgetData({ data: 'new_poll_state' });
+});
+
+// Prefix match:
+bot.widgetQuery('cart:', async (ctx) => {
+  await ctx.answerWidgetQuery('{"cart_updated": true}');
+});
+
+// Shared widget queries:
+bot.on('shared_widget_query', async (ctx) => {
+  await ctx.answerWidgetQuery('{"score": 100}');
+});
+```
+
+### 3. Ephemeral Callback Replies & Rich Quotes
+Reply ephemerally to button clicks without specifying `chat_id` or `receiver_user_id`:
+```javascript
+bot.action('secret_reveal', async (ctx) => {
+  // Chat ID is automatically omitted when replying to a callback query ephemerally:
+  await ctx.replyEphemeral('This secret is visible only to you!');
+});
+
+// Rich message quoting:
+await ctx.reply('Quoting rich block...', {
+  quote_rich_texts: true,
+  quote: 'Summary header',
+});
+```
+
+### 4. TON Wallet & Bank Cards (`fmt.tonAddress` & `fmt.bankCard`)
+Format and handle TON blockchain transactions and payment card numbers:
+```javascript
+import { fmt } from 'gramless/format';
+
+await ctx.reply(fmt.tonAddress('EQCD39VS5jcptHL8vMjEXrzGaRcCVYto7HUn4bpAOg8xqB2N'), {
+  parse_mode: 'HTML',
+});
+
+// Service messages:
+bot.on('ton_wallet_transfer', async (ctx) => {
+  const transfer = ctx.tonWalletTransfer;
+  console.log(`Received TON transfer: ${transfer.amount} nanoTON to ${transfer.wallet_address}`);
+});
+```
+
+### 5. Unique Gifts & Chat Share Backdrops
+```javascript
+const gift = await ctx.getUniqueGift('golden_star_1');
+await ctx.deleteBusinessAccountGift(businessConnectionId, ownedGiftId);
+const backdrops = await ctx.getChatShareThemeBackdrops();
 ```
 
 ---

@@ -135,6 +135,18 @@ export class GramlessRouter {
     /** @type {Array<{ pattern: RegExp, handler: Function }>} Regex callback routes */
     this.regexCallbacks = [];
 
+    /** @type {Map<string, Function>} Exact widget query data registry (Bot API 10.4) */
+    this.exactWidgetQueries = new Map();
+
+    /** @type {Array<{ prefix: string, handler: Function }>} Length-ordered widget query prefix routes */
+    this.prefixWidgetQueries = [];
+
+    /** @type {Array<{ pattern: RegExp, handler: Function }>} Regex widget query routes */
+    this.regexWidgetQueries = [];
+
+    /** @type {Array<Function>} General widget query handlers */
+    this.widgetHandlers = [];
+
     /** @type {Array<{ pattern: RegExp|string, handler: Function }>} Hears text routes */
     this.hearsRoutes = [];
 
@@ -216,6 +228,49 @@ export class GramlessRouter {
    */
   callback(trigger, ...handlers) {
     return this.action(trigger, ...handlers);
+  }
+
+  /**
+   * Registers a widget query handler (Bot API 10.4).
+   * Handles incoming queries from HTML widgets and shared widgets.
+   * Supports exact data strings, wildcard prefixes (e.g. 'vote:*'), RegExp, or catch-all.
+   * 
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  widgetQuery(trigger, ...handlers) {
+    if (typeof trigger === 'function') {
+      const pipeline = this._compileRoute([trigger, ...handlers]);
+      this.widgetHandlers.push(pipeline);
+      return this;
+    }
+
+    const pipeline = this._compileRoute(handlers);
+    if (trigger instanceof RegExp) {
+      this.regexWidgetQueries.push({ pattern: trigger, handler: pipeline });
+    } else if (typeof trigger === 'string') {
+      if (trigger.endsWith('*') || trigger.endsWith(':')) {
+        const prefix = trigger.replace(/\*$/, '');
+        this.prefixWidgetQueries.push({ prefix, handler: pipeline });
+        this.prefixWidgetQueries.sort((a, b) => b.prefix.length - a.prefix.length);
+      } else {
+        this.exactWidgetQueries.set(trigger, pipeline);
+      }
+    } else {
+      this.widgetHandlers.push(pipeline);
+    }
+    return this;
+  }
+
+  /**
+   * Alias for widgetQuery() (Bot API 10.4).
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  widget(trigger, ...handlers) {
+    return this.widgetQuery(trigger, ...handlers);
   }
 
   /**
@@ -414,7 +469,48 @@ export class GramlessRouter {
       }
     }
 
-    // 3. Hears (Text pattern matching)
+    // 3. Widget Queries (Bot API 10.4)
+    if (ctx.widgetQuery || ctx.sharedWidgetQuery) {
+      const widgetData = ctx.widgetQuery?.data || ctx.sharedWidgetQuery?.data || '';
+
+      // 3a. Exact widget query match ($O(1) Map lookup)
+      const exactWidgetHandler = this.exactWidgetQueries.get(widgetData);
+      if (exactWidgetHandler) {
+        ctx.match = [widgetData];
+        await exactWidgetHandler(ctx);
+        return true;
+      }
+
+      // 3b. Length-ordered widget query prefix matching
+      for (let i = 0; i < this.prefixWidgetQueries.length; i++) {
+        const { prefix, handler } = this.prefixWidgetQueries[i];
+        if (widgetData.startsWith(prefix)) {
+          ctx.match = [widgetData, widgetData.slice(prefix.length)];
+          await handler(ctx);
+          return true;
+        }
+      }
+
+      // 3c. Regex widget query matching
+      for (let i = 0; i < this.regexWidgetQueries.length; i++) {
+        const { pattern, handler } = this.regexWidgetQueries[i];
+        const match = widgetData.match(pattern);
+        if (match) {
+          ctx.match = match;
+          await handler(ctx);
+          return true;
+        }
+      }
+
+      // 3d. General widget query catch-all handlers
+      for (let i = 0; i < this.widgetHandlers.length; i++) {
+        ctx.match = [widgetData];
+        await this.widgetHandlers[i](ctx);
+        return true;
+      }
+    }
+
+    // 4. Hears (Text pattern matching)
     if (text) {
       for (let i = 0; i < this.hearsRoutes.length; i++) {
         const { pattern, handler } = this.hearsRoutes[i];
@@ -433,7 +529,7 @@ export class GramlessRouter {
       }
     }
 
-    // 4. Composable Predicate Routes (Filter.all, etc.)
+    // 5. Composable Predicate Routes (Filter.all, etc.)
     for (let i = 0; i < this.predicateRoutes.length; i++) {
       const { filter, handler } = this.predicateRoutes[i];
       if (await filter(ctx)) {
@@ -442,7 +538,7 @@ export class GramlessRouter {
       }
     }
 
-    // 5. Update Event Type matching (hierarchical: specific -> general, e.g. 'text' -> 'message')
+    // 6. Update Event Type matching (hierarchical: specific -> general, e.g. 'text' -> 'message')
     const eventTypes = this._resolveEventTypes(ctx);
     for (const eventType of eventTypes) {
       const handlers = this.eventRoutes.get(eventType);
@@ -472,6 +568,12 @@ export class GramlessRouter {
       ctx.update?.edited_message ||
       ctx.update?.edited_channel_post
     );
+
+    if (ctx.widgetQuery || ctx.update?.widget_query || ctx.raw?.widget_query) types.push('widget_query');
+    if (ctx.sharedWidgetQuery || ctx.update?.shared_widget_query || ctx.raw?.shared_widget_query) types.push('shared_widget_query');
+    if (ctx.raw?.widget || ctx.message?.widget) types.push('widget');
+    if (ctx.raw?.ton_wallet_transfer || ctx.message?.ton_wallet_transfer) types.push('ton_wallet_transfer');
+    if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
 
     if (ctx.raw?.data !== undefined || ctx.update?.callback_query) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');

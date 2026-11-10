@@ -104,6 +104,8 @@ export function isNotModifiedError(err: unknown): boolean;
 export function isPermissionError(err: unknown): boolean;
 export function isNotFoundError(err: unknown): boolean;
 export function isParseEntityError(err: unknown): boolean;
+export function isQueryTooOldError(err: unknown): boolean;
+
 
 export class ValidationError extends GramlessError {
   issues: Array<{ field: string; message: string }>;
@@ -116,7 +118,104 @@ export class PanicError extends GramlessError {
   cause: unknown;
 }
 
-export function sanitizeString(str: string): string;
+// --- Bot API 10.4 Types (Widgets, TON Wallet, Themes) ---
+
+export interface Widget {
+  id?: string;
+  width?: number;
+  height?: number;
+  html: string;
+  public_data?: string;
+  chat_data?: string;
+}
+
+export interface WidgetQueryType {
+  type: 'data' | 'sign_data' | 'sent_transaction' | string;
+  [key: string]: any;
+}
+
+export interface WidgetQuery {
+  id: string;
+  from: any;
+  chat?: any;
+  message_id?: number;
+  inline_message_id?: string;
+  chat_instance: string;
+  chat_type?: string;
+  type: WidgetQueryType;
+  data: string;
+  widget_id?: string;
+}
+
+export interface SharedWidgetQuery {
+  id: string;
+  from: any;
+  type: WidgetQueryType;
+  data: string;
+  widget_id: string;
+}
+
+export interface TonWalletTransfer {
+  [key: string]: any;
+}
+
+export interface PaidMessagesWaived {
+  [key: string]: any;
+}
+
+export interface SendWidgetOptions {
+  chat_id?: number | string;
+  message_thread_id?: number;
+  width?: number;
+  height?: number;
+  public_data?: string;
+  chat_data?: string;
+  caption?: string;
+  parse_mode?: string;
+  caption_entities?: any[];
+  show_caption_above_media?: boolean;
+  allow_queries?: boolean;
+  is_shared?: boolean;
+  disable_notification?: boolean;
+  protect_content?: boolean;
+  allow_paid_broadcast?: boolean;
+  message_effect_id?: string;
+  reply_parameters?: any;
+  reply_markup?: any;
+  buttons?: InlineKeyboard;
+  keyboard?: ReplyKeyboard;
+}
+
+export interface SendSharedWidgetOptions {
+  chat_id?: number | string;
+  message_thread_id?: number;
+  chat_data?: string;
+  caption?: string;
+  parse_mode?: string;
+  caption_entities?: any[];
+  show_caption_above_media?: boolean;
+  disable_notification?: boolean;
+  protect_content?: boolean;
+  allow_paid_broadcast?: boolean;
+  message_effect_id?: string;
+  reply_parameters?: any;
+  reply_markup?: any;
+  buttons?: InlineKeyboard;
+  keyboard?: ReplyKeyboard;
+}
+
+export interface AnswerWidgetQueryOptions {
+  widget_query_id?: string;
+  data?: string;
+}
+
+export interface EditWidgetDataOptions {
+  chat_id?: number | string;
+  message_id?: number;
+  inline_message_id?: string;
+  public_data?: string;
+  chat_data?: string;
+}
 
 export class GramlessContext {
   raw: Record<string, any>;
@@ -165,6 +264,11 @@ export class GramlessContext {
   readonly inlineQuery: Record<string, any> | null;
   readonly poll: Record<string, any> | null;
   readonly pollAnswer: Record<string, any> | null;
+  readonly widgetQuery: WidgetQuery | null;
+  readonly sharedWidgetQuery: SharedWidgetQuery | null;
+  readonly widget: Widget | null;
+  readonly tonWalletTransfer: TonWalletTransfer | null;
+  readonly paidMessagesWaived: PaidMessagesWaived | null;
   readonly oldChatMember: Record<string, any> | null;
   readonly newChatMember: Record<string, any> | null;
   readonly isPrivate: boolean;
@@ -182,6 +286,7 @@ export class GramlessContext {
   call(method: string, params?: Record<string, any>): Promise<any>;
 
   reply(text: string, options?: Record<string, any>): Promise<any>;
+  replyEphemeral(text: string, options?: Record<string, any>): Promise<any>;
   replyWithHtml(html: string, options?: Record<string, any>): Promise<any>;
   replyWithMarkdown(markdown: string, options?: Record<string, any>): Promise<any>;
 
@@ -248,7 +353,7 @@ export class GramlessContext {
   getFile(fileId: string): Promise<any>;
   getUserProfilePhotos(userId?: number | null, options?: Record<string, any>): Promise<any>;
 
-  // Bot API 10.x
+  // Bot API 10.x & 10.4
   sendRichMessage(richMessage: any, options?: Record<string, any>): Promise<any>;
   sendRichMessageDraft(richMessage: any, options?: Record<string, any>): Promise<any>;
   sendMessageDraft(draft: any, options?: Record<string, any>): Promise<any>;
@@ -256,6 +361,16 @@ export class GramlessContext {
   editEphemeralMessageText(text: string, options?: Record<string, any>): Promise<any>;
   deleteEphemeralMessage(ephemeralMessageId: number, options?: Record<string, any>): Promise<any>;
   answerGuestQuery(guestQueryId?: string | null, options?: Record<string, any>): Promise<any>;
+
+  sendWidget(html: string, options?: SendWidgetOptions): Promise<any>;
+  sendSharedWidget(widgetId: string, options?: SendSharedWidgetOptions): Promise<any>;
+  answerWidgetQuery(data?: string | AnswerWidgetQueryOptions, options?: AnswerWidgetQueryOptions): Promise<boolean>;
+  editMessageWidgetData(options?: EditWidgetDataOptions): Promise<boolean>;
+  editWidgetData(options?: EditWidgetDataOptions): Promise<boolean>;
+  editSharedWidgetData(widgetId: string, publicData: string, options?: { cache_time?: number }): Promise<boolean>;
+  getUniqueGift(name: string): Promise<any>;
+  deleteBusinessAccountGift(businessConnectionId: string, ownedGiftId: string): Promise<boolean>;
+  getChatShareThemeBackdrops(): Promise<any>;
 }
 
 export type HandlerFunction = (ctx: GramlessContext) => Promise<any> | any;
@@ -278,6 +393,8 @@ export class GramlessRouter {
   command(names: string | string[], ...handlers: HandlerFunction[]): this;
   action(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;
   callback(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;
+  widgetQuery(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
+  widget(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
   hears(pattern: string | RegExp, ...handlers: HandlerFunction[]): this;
   on(trigger: string | FilterPredicate, ...handlers: HandlerFunction[]): this;
   group(filter?: FilterPredicate): GramlessRouter;
@@ -349,6 +466,11 @@ export const Filter: {
   hasContact: FilterPredicate;
   hasPoll: FilterPredicate;
   hasDice: FilterPredicate;
+  hasWidget: FilterPredicate;
+  isWidgetQuery: FilterPredicate;
+  isSharedWidgetQuery: FilterPredicate;
+  hasTonTransfer: FilterPredicate;
+  hasPaidMessagesWaived: FilterPredicate;
   isCallback: FilterPredicate;
   textPrefix(prefix: string): FilterPredicate;
   textMatches(pattern: RegExp): FilterPredicate;
@@ -369,6 +491,11 @@ export const Filter: {
   contact: FilterPredicate;
   poll: FilterPredicate;
   dice: FilterPredicate;
+  widget: FilterPredicate;
+  widgetQuery: FilterPredicate;
+  sharedWidgetQuery: FilterPredicate;
+  tonTransfer: FilterPredicate;
+  paidMessagesWaived: FilterPredicate;
   callback: FilterPredicate;
 };
 
@@ -631,6 +758,8 @@ export interface Fmt {
   mention(name: any, userId: number | string): RawString;
   customEmoji(fallbackText: any, emojiId: string): RawString;
   blockquote(text: any, expandable?: boolean): RawString;
+  tonAddress(address: any): RawString;
+  bankCard(number: any): RawString;
 }
 
 export const fmt: Fmt;
@@ -741,12 +870,33 @@ export interface VirtualActorOptions {
   chatId?: number;
 }
 
+export class ActorExpectation {
+  calls: Array<{ method: string; params: Record<string, any> }>;
+  constructor(calls: Array<{ method: string; params: Record<string, any> }>);
+  wantSent(pattern: string | RegExp, options?: { buttons?: boolean }): this;
+  wantEdited(pattern: string | RegExp): this;
+  wantAnswered(pattern?: string | null): this;
+  wantWidgetSent(htmlPattern?: string | RegExp | null): this;
+  wantWidgetQueryAnswered(dataPattern?: string | null): this;
+  wantInlineAnswered(expectedCount?: number | null): this;
+  want(matcherFn: (calls: any[]) => void): this;
+}
+
 export class LabActor {
   id: number;
   username: string;
-  first_name: string;
+  firstName: string;
   chatId: number;
-  constructor(lab: GramlessLab, options?: VirtualActorOptions);
+  chatType: string;
+  updateCounter: number;
+  lab: GramlessLab;
+  constructor(lab: GramlessLab, profile?: VirtualActorOptions);
+  command(text: string): Promise<ActorExpectation>;
+  message(text: string, options?: Record<string, any>): Promise<ActorExpectation>;
+  click(data: string, options?: { messageId?: number; inlineMessageId?: string }): Promise<ActorExpectation>;
+  inline(query: string, offset?: string): Promise<ActorExpectation>;
+  queryWidget(data: string, options?: { messageId?: number; widgetId?: string; type?: any }): Promise<ActorExpectation>;
+  querySharedWidget(widgetId: string, data: string, options?: { type?: any }): Promise<ActorExpectation>;
   sendsCommand(command: string, payload?: string): Promise<any>;
   sendsMessage(text: string, options?: Record<string, any>): Promise<any>;
   clicks(callbackData: string, messageId?: number): Promise<any>;
@@ -754,6 +904,7 @@ export class LabActor {
 }
 
 export class MockBotApi {
+  calls: Array<{ method: string; params: Record<string, any> }>;
   outbound: Array<{ method: string; params: Record<string, any> }>;
   reset(): void;
   [method: string]: any;
@@ -762,7 +913,11 @@ export class MockBotApi {
 export class GramlessLab {
   router: GramlessRouter;
   api: MockBotApi;
+  store: MemorySessionStore;
   constructor(router: GramlessRouter);
+  actor(profile?: VirtualActorOptions): LabActor;
+  user(id: number, name?: string): LabActor;
+  groupMember(userId: number, groupId: number, name?: string): LabActor;
   createUser(options?: VirtualActorOptions): LabActor;
   createActor(options?: VirtualActorOptions): LabActor;
   dispatch(update: Record<string, any>): Promise<any>;

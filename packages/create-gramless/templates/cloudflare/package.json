@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "gramless": "^1.4.0"
+    "gramless": "^1.5.0"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"

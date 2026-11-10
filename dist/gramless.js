@@ -5,7 +5,7 @@
  * Drop directly into tgcloud/lib/gramless.js and import:
  *   import { createBot, Filter, session } from './lib/gramless.js';
  * 
- * Version: 1.4.0
+ * Version: 1.5.0
  * License: MIT
  */
 
@@ -254,9 +254,9 @@ export class ApiError extends GramlessError {
     return this.errorCode === 400 && !this.isReplyNotFound && /message to (?:edit|delete) not found|message can't be deleted|message not found/i.test(this.description);
   }
 
-  /** True if an inline callback query expired before being answered */
+  /** True if an inline callback query or widget query expired before being answered */
   get isQueryTooOld() {
-    return this.errorCode === 400 && /query is too old/i.test(this.description);
+    return this.errorCode === 400 && /(?:widget\s+)?query is too old/i.test(this.description);
   }
 
   /** True if the request was throttled by Telegram rate limits (429) */
@@ -328,6 +328,16 @@ export function isNotFoundError(err) {
 export function isParseEntityError(err) {
   return err instanceof ApiError ? err.isParseEntityError : false;
 }
+
+/**
+ * Checks if an error was caused by an expired callback query or widget query.
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isQueryTooOldError(err) {
+  return err instanceof ApiError ? err.isQueryTooOld : false;
+}
+
 
 /**
  * Thrown when input validation fails (e.g. in RPC endpoints or route parameters).
@@ -543,6 +553,31 @@ export const Filter = {
     return Boolean(ctx.raw.dice || ctx.message?.dice);
   },
 
+  /** Matches messages with HTML widgets (Bot API 10.4) */
+  hasWidget(ctx) {
+    return Boolean(ctx.widget || ctx.raw.widget || ctx.message?.widget);
+  },
+
+  /** Matches widget queries (Bot API 10.4) */
+  isWidgetQuery(ctx) {
+    return Boolean(ctx.widgetQuery || ctx.raw.widget_query || ctx.update?.widget_query);
+  },
+
+  /** Matches shared widget queries (Bot API 10.4) */
+  isSharedWidgetQuery(ctx) {
+    return Boolean(ctx.sharedWidgetQuery || ctx.raw.shared_widget_query || ctx.update?.shared_widget_query);
+  },
+
+  /** Matches TON wallet transfer service messages (Bot API 10.4) */
+  hasTonTransfer(ctx) {
+    return Boolean(ctx.tonWalletTransfer || ctx.raw.ton_wallet_transfer || ctx.message?.ton_wallet_transfer);
+  },
+
+  /** Matches service messages about paid messages waived (Bot API 10.4) */
+  hasPaidMessagesWaived(ctx) {
+    return Boolean(ctx.paidMessagesWaived || ctx.raw.paid_messages_waived || ctx.message?.paid_messages_waived);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -603,6 +638,11 @@ Filter.location = Filter.hasLocation;
 Filter.contact = Filter.hasContact;
 Filter.poll = Filter.hasPoll;
 Filter.dice = Filter.hasDice;
+Filter.widget = Filter.hasWidget;
+Filter.widgetQuery = Filter.isWidgetQuery;
+Filter.sharedWidgetQuery = Filter.isSharedWidgetQuery;
+Filter.tonTransfer = Filter.hasTonTransfer;
+Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
 Filter.callback = Filter.isCallback;
 
 // --- Module: format.js ---
@@ -858,6 +898,24 @@ export const fmt = {
       return new RawString(`<blockquote expandable>${escapeHtml(text)}</blockquote>`);
     }
     return new RawString(`<blockquote>${escapeHtml(text)}</blockquote>`);
+  },
+
+  /**
+   * TON blockchain address entity (Bot API 10.4).
+   * @param {string} address TON wallet address
+   * @returns {RawString}
+   */
+  tonAddress(address) {
+    return new RawString(`<a href="ton://transfer/${escapeHtml(address)}">${escapeHtml(address)}</a>`);
+  },
+
+  /**
+   * Bank card number formatted entity (Bot API 10.4).
+   * @param {string} number Card number
+   * @returns {RawString}
+   */
+  bankCard(number) {
+    return new RawString(`<code>${escapeHtml(number)}</code>`);
   },
 };
 
@@ -1115,10 +1173,13 @@ const DEFAULT_PACED_METHODS = new Set([
   'sendInvoice',
   'sendRichMessage',
   'sendLivePhoto',
+  'sendWidget',
+  'sendSharedWidget',
   'editMessageText',
   'editMessageCaption',
   'editMessageMedia',
   'editMessageReplyMarkup',
+  'editMessageWidgetData',
 ]);
 
 /**
@@ -3304,7 +3365,7 @@ export class GramlessContext {
     this.raw = input || {};
     this.ctx = ctx;
     this.update = ctx.update || {};
-    this.api = api;
+    this.api = api || ctx.api || null;
 
     // Execution clock & deadline budget
     this.startedAt = ctx.startedAt || Date.now();
@@ -3376,15 +3437,28 @@ export class GramlessContext {
   }
 
   get chatId() {
-    return this.message?.chat?.id || this.raw.from?.id || null;
+    return (
+      this.message?.chat?.id ||
+      this.raw.chat?.id ||
+      this.raw.from?.id ||
+      this.widgetQuery?.chat?.id ||
+      this.from?.id ||
+      null
+    );
   }
 
   get messageId() {
-    return this.message?.message_id || null;
+    return this.message?.message_id || this.widgetQuery?.message_id || null;
   }
 
   get from() {
-    return this.raw.from || this.message?.from || null;
+    return (
+      this.raw.from ||
+      this.message?.from ||
+      this.widgetQuery?.from ||
+      this.sharedWidgetQuery?.from ||
+      null
+    );
   }
 
   get userId() {
@@ -3396,7 +3470,13 @@ export class GramlessContext {
   }
 
   get data() {
-    return this.raw.data ?? null;
+    return (
+      this.raw.data ??
+      (this.update?.callback_query?.data ??
+        this.widgetQuery?.data ??
+        this.sharedWidgetQuery?.data ??
+        null)
+    );
   }
 
   get inlineQuery() {
@@ -3409,6 +3489,30 @@ export class GramlessContext {
 
   get pollAnswer() {
     return this.raw.poll_id !== undefined ? this.raw : (this.update.poll_answer || null);
+  }
+
+  get widgetQuery() {
+    return (
+      this.raw.widget_query ||
+      this.update.widget_query ||
+      (this.raw.type && this.raw.widget_query_id ? this.raw : null)
+    );
+  }
+
+  get sharedWidgetQuery() {
+    return this.raw.shared_widget_query || this.update.shared_widget_query || null;
+  }
+
+  get widget() {
+    return this.raw.widget || this.message?.widget || null;
+  }
+
+  get tonWalletTransfer() {
+    return this.raw.ton_wallet_transfer || this.message?.ton_wallet_transfer || null;
+  }
+
+  get paidMessagesWaived() {
+    return this.raw.paid_messages_waived || this.message?.paid_messages_waived || null;
   }
 
   get oldChatMember() {
@@ -3461,21 +3565,61 @@ export class GramlessContext {
   // --- Sending Messages & Media ---
 
   async reply(text, options = {}) {
-    const chatId = options.chat_id || this.chatId;
-    if (!chatId) throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
-
-    const payload = normalizeMarkupOptions({ chat_id: chatId, text, ...options });
-
-    // Ergonomic reply quoting (Bot API 7.0+)
-    if (options.quote || options.replyToCurrent) {
-      if (this.messageId) {
-        payload.reply_parameters = { message_id: this.messageId };
-      }
-      delete payload.quote;
-      delete payload.replyToCurrent;
+    const isEphemeralCallbackReply = Boolean(
+      options.ephemeral_message_parameters?.callback_query_id ||
+      (options.ephemeral && (this.raw.id || this.update?.callback_query?.id))
+    );
+    const chatId = options.chat_id || (isEphemeralCallbackReply ? undefined : this.chatId);
+    if (!chatId && !isEphemeralCallbackReply) {
+      throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
     }
 
+    const opts = { ...options };
+    if (chatId) opts.chat_id = chatId;
+    opts.text = text;
+
+    // Ergonomic reply quoting (Bot API 7.0+ & 10.4 quote_rich_texts)
+    if (opts.quote || opts.replyToCurrent || opts.quoteRichTexts || opts.quote_rich_texts) {
+      opts.reply_parameters = {
+        ...(opts.reply_parameters || {}),
+        ...(this.messageId ? { message_id: this.messageId } : {}),
+      };
+      if (typeof opts.quote === 'string') {
+        opts.reply_parameters.quote = opts.quote;
+      }
+      if (opts.quoteRichTexts || opts.quote_rich_texts) {
+        opts.reply_parameters.quote_rich_texts = Boolean(opts.quoteRichTexts || opts.quote_rich_texts);
+      }
+      delete opts.quote;
+      delete opts.replyToCurrent;
+      delete opts.quoteRichTexts;
+      delete opts.quote_rich_texts;
+    }
+
+    // Ergonomic Ephemeral message parameters (Bot API 10.3 & 10.4)
+    if (opts.ephemeral) {
+      const cbQueryId = this.raw.id || this.update?.callback_query?.id;
+      opts.ephemeral_message_parameters = {
+        ...(cbQueryId ? { callback_query_id: cbQueryId } : {}),
+        ...(typeof opts.ephemeral === 'object' ? opts.ephemeral : {}),
+      };
+      delete opts.ephemeral;
+    }
+
+    const payload = normalizeMarkupOptions(opts);
     return this.call('sendMessage', payload);
+  }
+
+  /**
+   * Sends an ephemeral reply visible only to the current user (Bot API 10.4).
+   * Automatically targets the active callback query if called within button interactions.
+   * 
+   * @param {string} text
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async replyEphemeral(text, options = {}) {
+    return this.reply(text, { ephemeral: true, ...options });
   }
 
   async replyWithHtml(html, options = {}) {
@@ -3775,13 +3919,27 @@ export class GramlessContext {
   }
 
   async restrictMember(userId, permissions = {}, options = {}) {
-    const chatId = options.chat_id || this.chatId;
+    const chatId = options.chat_id || permissions.chat_id || this.chatId;
+    const perms = permissions.permissions || permissions;
+    const untilDate = options.until_date || permissions.until_date;
+    const opts = { ...options };
+    if (untilDate) opts.until_date = untilDate;
     return this.call('restrictChatMember', {
       chat_id: chatId,
       user_id: userId,
-      permissions,
-      ...options,
+      permissions: perms,
+      ...opts,
     });
+  }
+
+  async getChatMember(userId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('getChatMember', { chat_id: chatId, user_id: userId, ...options });
+  }
+
+  async getChatAdministrators(options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('getChatAdministrators', { chat_id: chatId, ...options });
   }
 
   async promoteMember(userId, options = {}) {
@@ -3955,6 +4113,136 @@ export class GramlessContext {
       guest_query_id: queryId,
       ...options,
     });
+  }
+
+  // --- Bot API 10.4: HTML Widgets, Gifts & TON Wallet ---
+
+  /**
+   * Sends an HTML widget message (Bot API 10.4).
+   * @param {string} html HTML code of the widget (1-32768 bytes)
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async sendWidget(html, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    if (!chatId) throw new ApiError('sendWidget', 'No chat_id available in current context', 400);
+    if (!html || typeof html !== 'string') {
+      throw new ApiError('sendWidget', 'Widget html must be between 1 and 32,768 bytes', 400);
+    }
+    const byteLen = typeof Buffer !== 'undefined' ? Buffer.byteLength(html, 'utf8') : new TextEncoder().encode(html).length;
+    if (byteLen < 1 || byteLen > 32768) {
+      throw new ApiError('sendWidget', `Widget html must be between 1 and 32,768 bytes (got ${byteLen} bytes)`, 400);
+    }
+    const payload = normalizeMarkupOptions({ chat_id: chatId, html, ...options });
+    return this.call('sendWidget', payload);
+  }
+
+  /**
+   * Sends again a shared widget created by the bot (Bot API 10.4).
+   * @param {string} widgetId Unique identifier of the shared widget
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async sendSharedWidget(widgetId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    if (!chatId) throw new ApiError('sendSharedWidget', 'No chat_id available in current context', 400);
+    const payload = normalizeMarkupOptions({ chat_id: chatId, widget_id: widgetId, ...options });
+    return this.call('sendSharedWidget', payload);
+  }
+
+  /**
+   * Answers a query from an HTML widget (Bot API 10.4).
+   * @param {string|Record<string, any>} [data=''] Data to return to the widget (0-1024 bytes) or options
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async answerWidgetQuery(data = '', options = {}) {
+    let dataStr = data;
+    let opts = options;
+    if (typeof data === 'object' && data !== null) {
+      opts = data;
+      dataStr = opts.data || '';
+    }
+    const queryId = opts.widget_query_id || this.widgetQuery?.id || this.sharedWidgetQuery?.id || this.raw.id;
+    if (!queryId) throw new ApiError('answerWidgetQuery', 'No widget_query_id available in current context', 400);
+    const payload = { widget_query_id: queryId, ...opts };
+    if (dataStr) payload.data = dataStr;
+    try {
+      return await this.call('answerWidgetQuery', payload);
+    } catch (err) {
+      if (err?.code === 400 && err?.description && err.description.includes('query is too old')) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Edits data of a widget in a message (Bot API 10.4).
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editMessageWidgetData(options = {}) {
+    const payload = { ...options };
+    if (!payload.inline_message_id && !payload.chat_id && !payload.message_id) {
+      if (this.chatId) payload.chat_id = this.chatId;
+      if (this.messageId) payload.message_id = this.messageId;
+    }
+    return this.call('editMessageWidgetData', payload);
+  }
+
+  /**
+   * Alias for editMessageWidgetData (Bot API 10.4).
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editWidgetData(options = {}) {
+    return this.editMessageWidgetData(options);
+  }
+
+  /**
+   * Edits public data of a shared widget created by the bot (Bot API 10.4).
+   * @param {string} widgetId Unique identifier of the shared widget
+   * @param {string} publicData New public data (0-1024 bytes; empty string to remove)
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editSharedWidgetData(widgetId, publicData, options = {}) {
+    return this.call('editSharedWidgetData', {
+      widget_id: widgetId,
+      public_data: publicData,
+      ...options,
+    });
+  }
+
+  /**
+   * Gets information about a unique gift by its name (Bot API 10.4).
+   * @param {string} name Unique name of the gift
+   * @returns {Promise<any>}
+   */
+  async getUniqueGift(name) {
+    return this.call('getUniqueGift', { name });
+  }
+
+  /**
+   * Deletes a regular gift owned by a managed business account without receiving Stars (Bot API 10.4).
+   * @param {string} businessConnectionId
+   * @param {string} ownedGiftId
+   * @returns {Promise<boolean>}
+   */
+  async deleteBusinessAccountGift(businessConnectionId, ownedGiftId) {
+    return this.call('deleteBusinessAccountGift', {
+      business_connection_id: businessConnectionId,
+      owned_gift_id: ownedGiftId,
+    });
+  }
+
+  /**
+   * Gets the list of backdrops for chat share themes (Bot API 10.4).
+   * @returns {Promise<any>}
+   */
+  async getChatShareThemeBackdrops() {
+    return this.call('getChatShareThemeBackdrops', {});
   }
 }
 
@@ -4298,6 +4586,18 @@ export class GramlessRouter {
     /** @type {Array<{ pattern: RegExp, handler: Function }>} Regex callback routes */
     this.regexCallbacks = [];
 
+    /** @type {Map<string, Function>} Exact widget query data registry (Bot API 10.4) */
+    this.exactWidgetQueries = new Map();
+
+    /** @type {Array<{ prefix: string, handler: Function }>} Length-ordered widget query prefix routes */
+    this.prefixWidgetQueries = [];
+
+    /** @type {Array<{ pattern: RegExp, handler: Function }>} Regex widget query routes */
+    this.regexWidgetQueries = [];
+
+    /** @type {Array<Function>} General widget query handlers */
+    this.widgetHandlers = [];
+
     /** @type {Array<{ pattern: RegExp|string, handler: Function }>} Hears text routes */
     this.hearsRoutes = [];
 
@@ -4379,6 +4679,49 @@ export class GramlessRouter {
    */
   callback(trigger, ...handlers) {
     return this.action(trigger, ...handlers);
+  }
+
+  /**
+   * Registers a widget query handler (Bot API 10.4).
+   * Handles incoming queries from HTML widgets and shared widgets.
+   * Supports exact data strings, wildcard prefixes (e.g. 'vote:*'), RegExp, or catch-all.
+   * 
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  widgetQuery(trigger, ...handlers) {
+    if (typeof trigger === 'function') {
+      const pipeline = this._compileRoute([trigger, ...handlers]);
+      this.widgetHandlers.push(pipeline);
+      return this;
+    }
+
+    const pipeline = this._compileRoute(handlers);
+    if (trigger instanceof RegExp) {
+      this.regexWidgetQueries.push({ pattern: trigger, handler: pipeline });
+    } else if (typeof trigger === 'string') {
+      if (trigger.endsWith('*') || trigger.endsWith(':')) {
+        const prefix = trigger.replace(/\*$/, '');
+        this.prefixWidgetQueries.push({ prefix, handler: pipeline });
+        this.prefixWidgetQueries.sort((a, b) => b.prefix.length - a.prefix.length);
+      } else {
+        this.exactWidgetQueries.set(trigger, pipeline);
+      }
+    } else {
+      this.widgetHandlers.push(pipeline);
+    }
+    return this;
+  }
+
+  /**
+   * Alias for widgetQuery() (Bot API 10.4).
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  widget(trigger, ...handlers) {
+    return this.widgetQuery(trigger, ...handlers);
   }
 
   /**
@@ -4577,7 +4920,48 @@ export class GramlessRouter {
       }
     }
 
-    // 3. Hears (Text pattern matching)
+    // 3. Widget Queries (Bot API 10.4)
+    if (ctx.widgetQuery || ctx.sharedWidgetQuery) {
+      const widgetData = ctx.widgetQuery?.data || ctx.sharedWidgetQuery?.data || '';
+
+      // 3a. Exact widget query match ($O(1) Map lookup)
+      const exactWidgetHandler = this.exactWidgetQueries.get(widgetData);
+      if (exactWidgetHandler) {
+        ctx.match = [widgetData];
+        await exactWidgetHandler(ctx);
+        return true;
+      }
+
+      // 3b. Length-ordered widget query prefix matching
+      for (let i = 0; i < this.prefixWidgetQueries.length; i++) {
+        const { prefix, handler } = this.prefixWidgetQueries[i];
+        if (widgetData.startsWith(prefix)) {
+          ctx.match = [widgetData, widgetData.slice(prefix.length)];
+          await handler(ctx);
+          return true;
+        }
+      }
+
+      // 3c. Regex widget query matching
+      for (let i = 0; i < this.regexWidgetQueries.length; i++) {
+        const { pattern, handler } = this.regexWidgetQueries[i];
+        const match = widgetData.match(pattern);
+        if (match) {
+          ctx.match = match;
+          await handler(ctx);
+          return true;
+        }
+      }
+
+      // 3d. General widget query catch-all handlers
+      for (let i = 0; i < this.widgetHandlers.length; i++) {
+        ctx.match = [widgetData];
+        await this.widgetHandlers[i](ctx);
+        return true;
+      }
+    }
+
+    // 4. Hears (Text pattern matching)
     if (text) {
       for (let i = 0; i < this.hearsRoutes.length; i++) {
         const { pattern, handler } = this.hearsRoutes[i];
@@ -4596,7 +4980,7 @@ export class GramlessRouter {
       }
     }
 
-    // 4. Composable Predicate Routes (Filter.all, etc.)
+    // 5. Composable Predicate Routes (Filter.all, etc.)
     for (let i = 0; i < this.predicateRoutes.length; i++) {
       const { filter, handler } = this.predicateRoutes[i];
       if (await filter(ctx)) {
@@ -4605,7 +4989,7 @@ export class GramlessRouter {
       }
     }
 
-    // 5. Update Event Type matching (hierarchical: specific -> general, e.g. 'text' -> 'message')
+    // 6. Update Event Type matching (hierarchical: specific -> general, e.g. 'text' -> 'message')
     const eventTypes = this._resolveEventTypes(ctx);
     for (const eventType of eventTypes) {
       const handlers = this.eventRoutes.get(eventType);
@@ -4635,6 +5019,12 @@ export class GramlessRouter {
       ctx.update?.edited_message ||
       ctx.update?.edited_channel_post
     );
+
+    if (ctx.widgetQuery || ctx.update?.widget_query || ctx.raw?.widget_query) types.push('widget_query');
+    if (ctx.sharedWidgetQuery || ctx.update?.shared_widget_query || ctx.raw?.shared_widget_query) types.push('shared_widget_query');
+    if (ctx.raw?.widget || ctx.message?.widget) types.push('widget');
+    if (ctx.raw?.ton_wallet_transfer || ctx.message?.ton_wallet_transfer) types.push('ton_wallet_transfer');
+    if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
 
     if (ctx.raw?.data !== undefined || ctx.update?.callback_query) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');

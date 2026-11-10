@@ -132,6 +132,31 @@ export const Filter = {
     return Boolean(ctx.raw.dice || ctx.message?.dice);
   },
 
+  /** Matches messages with HTML widgets (Bot API 10.4) */
+  hasWidget(ctx) {
+    return Boolean(ctx.widget || ctx.raw.widget || ctx.message?.widget);
+  },
+
+  /** Matches widget queries (Bot API 10.4) */
+  isWidgetQuery(ctx) {
+    return Boolean(ctx.widgetQuery || ctx.raw.widget_query || ctx.update?.widget_query);
+  },
+
+  /** Matches shared widget queries (Bot API 10.4) */
+  isSharedWidgetQuery(ctx) {
+    return Boolean(ctx.sharedWidgetQuery || ctx.raw.shared_widget_query || ctx.update?.shared_widget_query);
+  },
+
+  /** Matches TON wallet transfer service messages (Bot API 10.4) */
+  hasTonTransfer(ctx) {
+    return Boolean(ctx.tonWalletTransfer || ctx.raw.ton_wallet_transfer || ctx.message?.ton_wallet_transfer);
+  },
+
+  /** Matches service messages about paid messages waived (Bot API 10.4) */
+  hasPaidMessagesWaived(ctx) {
+    return Boolean(ctx.paidMessagesWaived || ctx.raw.paid_messages_waived || ctx.message?.paid_messages_waived);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -192,5 +217,10 @@ Filter.location = Filter.hasLocation;
 Filter.contact = Filter.hasContact;
 Filter.poll = Filter.hasPoll;
 Filter.dice = Filter.hasDice;
+Filter.widget = Filter.hasWidget;
+Filter.widgetQuery = Filter.isWidgetQuery;
+Filter.sharedWidgetQuery = Filter.isSharedWidgetQuery;
+Filter.tonTransfer = Filter.hasTonTransfer;
+Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
 Filter.callback = Filter.isCallback;
 

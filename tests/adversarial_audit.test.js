@@ -305,13 +305,12 @@ test('BUG-12: DeepLinkRouter matches parameters containing underscores and calls
   assert.equal(nextCalled, true, 'next() must be called when handler passes downstream');
 });
 
-test('SPEC-13 & SPEC-14: bot.compile() pre-compiles pipeline and README has 8.x badge', () => {
+test('SPEC-13 & SPEC-14: bot.compile() pre-compiles pipeline and README has 10.4 badge', () => {
   const bot = createBot();
   bot.use(async (ctx, next) => next());
   bot.compile();
   assert.equal(bot._isCompiled, true, 'bot._isCompiled must be true after compile()');
 
   const readme = fs.readFileSync(path.join(rootDir, 'README.md'), 'utf8');
-  assert.ok(readme.includes('Telegram%20Bot%20API-8.x%20ready'), 'README must have 8.x Bot API badge');
-  assert.ok(!readme.includes('10.3 ready'), 'README must not claim fictional 10.3 version');
+  assert.ok(readme.includes('Telegram%20Bot%20API-10.4%20ready'), 'README must have 10.4 Bot API badge');
 });

@@ -31,6 +31,7 @@ export {
   isPermissionError,
   isNotFoundError,
   isParseEntityError,
+  isQueryTooOldError,
 } from './errors.js';
 export {
   session,

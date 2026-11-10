@@ -156,7 +156,7 @@ export class GramlessContext {
     this.raw = input || {};
     this.ctx = ctx;
     this.update = ctx.update || {};
-    this.api = api;
+    this.api = api || ctx.api || null;
 
     // Execution clock & deadline budget
     this.startedAt = ctx.startedAt || Date.now();
@@ -228,15 +228,28 @@ export class GramlessContext {
   }
 
   get chatId() {
-    return this.message?.chat?.id || this.raw.from?.id || null;
+    return (
+      this.message?.chat?.id ||
+      this.raw.chat?.id ||
+      this.raw.from?.id ||
+      this.widgetQuery?.chat?.id ||
+      this.from?.id ||
+      null
+    );
   }
 
   get messageId() {
-    return this.message?.message_id || null;
+    return this.message?.message_id || this.widgetQuery?.message_id || null;
   }
 
   get from() {
-    return this.raw.from || this.message?.from || null;
+    return (
+      this.raw.from ||
+      this.message?.from ||
+      this.widgetQuery?.from ||
+      this.sharedWidgetQuery?.from ||
+      null
+    );
   }
 
   get userId() {
@@ -248,7 +261,13 @@ export class GramlessContext {
   }
 
   get data() {
-    return this.raw.data ?? null;
+    return (
+      this.raw.data ??
+      (this.update?.callback_query?.data ??
+        this.widgetQuery?.data ??
+        this.sharedWidgetQuery?.data ??
+        null)
+    );
   }
 
   get inlineQuery() {
@@ -261,6 +280,30 @@ export class GramlessContext {
 
   get pollAnswer() {
     return this.raw.poll_id !== undefined ? this.raw : (this.update.poll_answer || null);
+  }
+
+  get widgetQuery() {
+    return (
+      this.raw.widget_query ||
+      this.update.widget_query ||
+      (this.raw.type && this.raw.widget_query_id ? this.raw : null)
+    );
+  }
+
+  get sharedWidgetQuery() {
+    return this.raw.shared_widget_query || this.update.shared_widget_query || null;
+  }
+
+  get widget() {
+    return this.raw.widget || this.message?.widget || null;
+  }
+
+  get tonWalletTransfer() {
+    return this.raw.ton_wallet_transfer || this.message?.ton_wallet_transfer || null;
+  }
+
+  get paidMessagesWaived() {
+    return this.raw.paid_messages_waived || this.message?.paid_messages_waived || null;
   }
 
   get oldChatMember() {
@@ -313,21 +356,61 @@ export class GramlessContext {
   // --- Sending Messages & Media ---
 
   async reply(text, options = {}) {
-    const chatId = options.chat_id || this.chatId;
-    if (!chatId) throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
-
-    const payload = normalizeMarkupOptions({ chat_id: chatId, text, ...options });
-
-    // Ergonomic reply quoting (Bot API 7.0+)
-    if (options.quote || options.replyToCurrent) {
-      if (this.messageId) {
-        payload.reply_parameters = { message_id: this.messageId };
-      }
-      delete payload.quote;
-      delete payload.replyToCurrent;
+    const isEphemeralCallbackReply = Boolean(
+      options.ephemeral_message_parameters?.callback_query_id ||
+      (options.ephemeral && (this.raw.id || this.update?.callback_query?.id))
+    );
+    const chatId = options.chat_id || (isEphemeralCallbackReply ? undefined : this.chatId);
+    if (!chatId && !isEphemeralCallbackReply) {
+      throw new ApiError('sendMessage', 'No chat_id available in current context', 400);
     }
 
+    const opts = { ...options };
+    if (chatId) opts.chat_id = chatId;
+    opts.text = text;
+
+    // Ergonomic reply quoting (Bot API 7.0+ & 10.4 quote_rich_texts)
+    if (opts.quote || opts.replyToCurrent || opts.quoteRichTexts || opts.quote_rich_texts) {
+      opts.reply_parameters = {
+        ...(opts.reply_parameters || {}),
+        ...(this.messageId ? { message_id: this.messageId } : {}),
+      };
+      if (typeof opts.quote === 'string') {
+        opts.reply_parameters.quote = opts.quote;
+      }
+      if (opts.quoteRichTexts || opts.quote_rich_texts) {
+        opts.reply_parameters.quote_rich_texts = Boolean(opts.quoteRichTexts || opts.quote_rich_texts);
+      }
+      delete opts.quote;
+      delete opts.replyToCurrent;
+      delete opts.quoteRichTexts;
+      delete opts.quote_rich_texts;
+    }
+
+    // Ergonomic Ephemeral message parameters (Bot API 10.3 & 10.4)
+    if (opts.ephemeral) {
+      const cbQueryId = this.raw.id || this.update?.callback_query?.id;
+      opts.ephemeral_message_parameters = {
+        ...(cbQueryId ? { callback_query_id: cbQueryId } : {}),
+        ...(typeof opts.ephemeral === 'object' ? opts.ephemeral : {}),
+      };
+      delete opts.ephemeral;
+    }
+
+    const payload = normalizeMarkupOptions(opts);
     return this.call('sendMessage', payload);
+  }
+
+  /**
+   * Sends an ephemeral reply visible only to the current user (Bot API 10.4).
+   * Automatically targets the active callback query if called within button interactions.
+   * 
+   * @param {string} text
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async replyEphemeral(text, options = {}) {
+    return this.reply(text, { ephemeral: true, ...options });
   }
 
   async replyWithHtml(html, options = {}) {
@@ -627,13 +710,27 @@ export class GramlessContext {
   }
 
   async restrictMember(userId, permissions = {}, options = {}) {
-    const chatId = options.chat_id || this.chatId;
+    const chatId = options.chat_id || permissions.chat_id || this.chatId;
+    const perms = permissions.permissions || permissions;
+    const untilDate = options.until_date || permissions.until_date;
+    const opts = { ...options };
+    if (untilDate) opts.until_date = untilDate;
     return this.call('restrictChatMember', {
       chat_id: chatId,
       user_id: userId,
-      permissions,
-      ...options,
+      permissions: perms,
+      ...opts,
     });
+  }
+
+  async getChatMember(userId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('getChatMember', { chat_id: chatId, user_id: userId, ...options });
+  }
+
+  async getChatAdministrators(options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    return this.call('getChatAdministrators', { chat_id: chatId, ...options });
   }
 
   async promoteMember(userId, options = {}) {
@@ -807,6 +904,136 @@ export class GramlessContext {
       guest_query_id: queryId,
       ...options,
     });
+  }
+
+  // --- Bot API 10.4: HTML Widgets, Gifts & TON Wallet ---
+
+  /**
+   * Sends an HTML widget message (Bot API 10.4).
+   * @param {string} html HTML code of the widget (1-32768 bytes)
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async sendWidget(html, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    if (!chatId) throw new ApiError('sendWidget', 'No chat_id available in current context', 400);
+    if (!html || typeof html !== 'string') {
+      throw new ApiError('sendWidget', 'Widget html must be between 1 and 32,768 bytes', 400);
+    }
+    const byteLen = typeof Buffer !== 'undefined' ? Buffer.byteLength(html, 'utf8') : new TextEncoder().encode(html).length;
+    if (byteLen < 1 || byteLen > 32768) {
+      throw new ApiError('sendWidget', `Widget html must be between 1 and 32,768 bytes (got ${byteLen} bytes)`, 400);
+    }
+    const payload = normalizeMarkupOptions({ chat_id: chatId, html, ...options });
+    return this.call('sendWidget', payload);
+  }
+
+  /**
+   * Sends again a shared widget created by the bot (Bot API 10.4).
+   * @param {string} widgetId Unique identifier of the shared widget
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<any>}
+   */
+  async sendSharedWidget(widgetId, options = {}) {
+    const chatId = options.chat_id || this.chatId;
+    if (!chatId) throw new ApiError('sendSharedWidget', 'No chat_id available in current context', 400);
+    const payload = normalizeMarkupOptions({ chat_id: chatId, widget_id: widgetId, ...options });
+    return this.call('sendSharedWidget', payload);
+  }
+
+  /**
+   * Answers a query from an HTML widget (Bot API 10.4).
+   * @param {string|Record<string, any>} [data=''] Data to return to the widget (0-1024 bytes) or options
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async answerWidgetQuery(data = '', options = {}) {
+    let dataStr = data;
+    let opts = options;
+    if (typeof data === 'object' && data !== null) {
+      opts = data;
+      dataStr = opts.data || '';
+    }
+    const queryId = opts.widget_query_id || this.widgetQuery?.id || this.sharedWidgetQuery?.id || this.raw.id;
+    if (!queryId) throw new ApiError('answerWidgetQuery', 'No widget_query_id available in current context', 400);
+    const payload = { widget_query_id: queryId, ...opts };
+    if (dataStr) payload.data = dataStr;
+    try {
+      return await this.call('answerWidgetQuery', payload);
+    } catch (err) {
+      if (err?.code === 400 && err?.description && err.description.includes('query is too old')) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Edits data of a widget in a message (Bot API 10.4).
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editMessageWidgetData(options = {}) {
+    const payload = { ...options };
+    if (!payload.inline_message_id && !payload.chat_id && !payload.message_id) {
+      if (this.chatId) payload.chat_id = this.chatId;
+      if (this.messageId) payload.message_id = this.messageId;
+    }
+    return this.call('editMessageWidgetData', payload);
+  }
+
+  /**
+   * Alias for editMessageWidgetData (Bot API 10.4).
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editWidgetData(options = {}) {
+    return this.editMessageWidgetData(options);
+  }
+
+  /**
+   * Edits public data of a shared widget created by the bot (Bot API 10.4).
+   * @param {string} widgetId Unique identifier of the shared widget
+   * @param {string} publicData New public data (0-1024 bytes; empty string to remove)
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async editSharedWidgetData(widgetId, publicData, options = {}) {
+    return this.call('editSharedWidgetData', {
+      widget_id: widgetId,
+      public_data: publicData,
+      ...options,
+    });
+  }
+
+  /**
+   * Gets information about a unique gift by its name (Bot API 10.4).
+   * @param {string} name Unique name of the gift
+   * @returns {Promise<any>}
+   */
+  async getUniqueGift(name) {
+    return this.call('getUniqueGift', { name });
+  }
+
+  /**
+   * Deletes a regular gift owned by a managed business account without receiving Stars (Bot API 10.4).
+   * @param {string} businessConnectionId
+   * @param {string} ownedGiftId
+   * @returns {Promise<boolean>}
+   */
+  async deleteBusinessAccountGift(businessConnectionId, ownedGiftId) {
+    return this.call('deleteBusinessAccountGift', {
+      business_connection_id: businessConnectionId,
+      owned_gift_id: ownedGiftId,
+    });
+  }
+
+  /**
+   * Gets the list of backdrops for chat share themes (Bot API 10.4).
+   * @returns {Promise<any>}
+   */
+  async getChatShareThemeBackdrops() {
+    return this.call('getChatShareThemeBackdrops', {});
   }
 }
 

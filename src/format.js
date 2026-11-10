@@ -251,6 +251,24 @@ export const fmt = {
     }
     return new RawString(`<blockquote>${escapeHtml(text)}</blockquote>`);
   },
+
+  /**
+   * TON blockchain address entity (Bot API 10.4).
+   * @param {string} address TON wallet address
+   * @returns {RawString}
+   */
+  tonAddress(address) {
+    return new RawString(`<a href="ton://transfer/${escapeHtml(address)}">${escapeHtml(address)}</a>`);
+  },
+
+  /**
+   * Bank card number formatted entity (Bot API 10.4).
+   * @param {string} number Card number
+   * @returns {RawString}
+   */
+  bankCard(number) {
+    return new RawString(`<code>${escapeHtml(number)}</code>`);
+  },
 };
 
 export default {

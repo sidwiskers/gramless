@@ -30,10 +30,13 @@ const DEFAULT_PACED_METHODS = new Set([
   'sendInvoice',
   'sendRichMessage',
   'sendLivePhoto',
+  'sendWidget',
+  'sendSharedWidget',
   'editMessageText',
   'editMessageCaption',
   'editMessageMedia',
   'editMessageReplyMarkup',
+  'editMessageWidgetData',
 ]);
 
 /**

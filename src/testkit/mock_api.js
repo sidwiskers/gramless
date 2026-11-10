@@ -129,7 +129,10 @@ export class MockBotApi {
    */
   async call(method, params) {
     this.calls.push({ method, params, timestamp: Date.now() });
-    if (this.responses.has(method)) return this.responses.get(method);
+    if (this.responses.has(method)) {
+      const resp = this.responses.get(method);
+      return typeof resp === 'function' ? resp(params) : resp;
+    }
     return { ok: true, result: params };
   }
 }

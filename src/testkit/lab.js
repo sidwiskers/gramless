@@ -18,10 +18,8 @@ export class GramlessLab {
     this.api = new MockBotApi();
     this.store = new MemorySessionStore();
 
-    // Attach mock API to router if not already configured
-    if (!this.router.api) {
-      this.router.api = this.api;
-    }
+    // Attach mock API to router for test isolation
+    this.router.api = this.api;
   }
 
   /**

@@ -80,6 +80,39 @@ export class ActorExpectation {
   }
 
   /**
+   * Asserts that a message with an HTML widget was sent (Bot API 10.4).
+   * @param {string|RegExp} [htmlPattern]
+   */
+  wantWidgetSent(htmlPattern = null) {
+    const sent = this.calls.filter(c => c.method === 'sendWidget' || c.method === 'sendSharedWidget');
+    assert.ok(sent.length > 0, 'Expected sendWidget or sendSharedWidget to be called, but none occurred');
+
+    if (htmlPattern) {
+      const matching = sent.find(call => {
+        const html = call.params.html || call.params.widget_id || '';
+        return htmlPattern instanceof RegExp ? htmlPattern.test(html) : html.includes(htmlPattern);
+      });
+      assert.ok(matching, `Expected sent widget matching "${htmlPattern}"`);
+    }
+    return this;
+  }
+
+  /**
+   * Asserts that a query from an HTML widget was answered (Bot API 10.4).
+   * @param {string|null} [dataPattern=null]
+   */
+  wantWidgetQueryAnswered(dataPattern = null) {
+    const answered = this.calls.filter(c => c.method === 'answerWidgetQuery');
+    assert.ok(answered.length > 0, 'Expected answerWidgetQuery to be called, but none occurred');
+
+    if (dataPattern) {
+      const matching = answered.find(call => (call.params.data || '').includes(dataPattern));
+      assert.ok(matching, `Expected widget answer containing "${dataPattern}"`);
+    }
+    return this;
+  }
+
+  /**
    * Asserts that an inline query was answered.
    * @param {number|null} [expectedCount=null]
    */
@@ -223,6 +256,76 @@ export class LabActor {
     const update = {
       update_id: this.updateCounter++,
       inline_query: rawQuery,
+    };
+
+    await this.lab.router.handle(rawQuery, { update }, this.lab.api);
+
+    const callsSince = this.lab.api.calls.slice(startCallIndex);
+    return new ActorExpectation(callsSince);
+  }
+
+  /**
+   * Simulates an incoming query from an HTML widget (Bot API 10.4).
+   * @param {string} data
+   * @param {Object} [options={}]
+   * @returns {Promise<ActorExpectation>}
+   */
+  async queryWidget(data, options = {}) {
+    const startCallIndex = this.lab.api.calls.length;
+
+    const rawQuery = {
+      id: `widget_${this.updateCounter++}`,
+      from: {
+        id: this.id,
+        is_bot: false,
+        first_name: this.firstName,
+        username: this.username,
+      },
+      chat: { id: this.chatId, type: this.chatType },
+      message_id: options.messageId || 555,
+      chat_instance: `inst_${this.chatId}`,
+      type: options.type || { type: 'data' },
+      data,
+      widget_id: options.widgetId,
+    };
+
+    const update = {
+      update_id: this.updateCounter++,
+      widget_query: rawQuery,
+    };
+
+    await this.lab.router.handle(rawQuery, { update }, this.lab.api);
+
+    const callsSince = this.lab.api.calls.slice(startCallIndex);
+    return new ActorExpectation(callsSince);
+  }
+
+  /**
+   * Simulates an incoming query from a shared HTML widget (Bot API 10.4).
+   * @param {string} widgetId
+   * @param {string} data
+   * @param {Object} [options={}]
+   * @returns {Promise<ActorExpectation>}
+   */
+  async querySharedWidget(widgetId, data, options = {}) {
+    const startCallIndex = this.lab.api.calls.length;
+
+    const rawQuery = {
+      id: `shared_widget_${this.updateCounter++}`,
+      from: {
+        id: this.id,
+        is_bot: false,
+        first_name: this.firstName,
+        username: this.username,
+      },
+      type: options.type || { type: 'data' },
+      data,
+      widget_id: widgetId,
+    };
+
+    const update = {
+      update_id: this.updateCounter++,
+      shared_widget_query: rawQuery,
     };
 
     await this.lab.router.handle(rawQuery, { update }, this.lab.api);

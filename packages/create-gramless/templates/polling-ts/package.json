@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "gramless": "^1.4.0"
+    "gramless": "^1.5.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
