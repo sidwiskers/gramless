@@ -306,6 +306,29 @@ export class GramlessContext {
     return this.raw.paid_messages_waived || this.message?.paid_messages_waived || null;
   }
 
+  get inlineMessageId() {
+    return (
+      this.raw.inline_message_id ||
+      this.update.callback_query?.inline_message_id ||
+      this.update.chosen_inline_result?.inline_message_id ||
+      this.widgetQuery?.inline_message_id ||
+      null
+    );
+  }
+
+  get writeAccessAllowed() {
+    return (
+      this.raw.write_access_allowed ||
+      this.message?.write_access_allowed ||
+      this.update?.message?.write_access_allowed ||
+      null
+    );
+  }
+
+  get inviter() {
+    return this.writeAccessAllowed?.inviter || null;
+  }
+
   get oldChatMember() {
     return this.raw.old_chat_member || this.update.chat_member?.old_chat_member || this.update.my_chat_member?.old_chat_member || null;
   }
@@ -547,11 +570,34 @@ export class GramlessContext {
   // --- Message Management & Editing ---
 
   async edit(text, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
 
     if (!chatId || !messageId) {
-      throw new ApiError('editMessageText', 'Missing chat_id or message_id for edit', 400);
+      throw new ApiError('editMessageText', 'Missing chat_id/message_id or inline_message_id for edit', 400);
     }
 
     const payload = normalizeMarkupOptions({
@@ -564,6 +610,29 @@ export class GramlessContext {
   }
 
   async editCaption(caption, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
     const payload = normalizeMarkupOptions({
@@ -576,6 +645,29 @@ export class GramlessContext {
   }
 
   async editMedia(media, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
     const payload = normalizeMarkupOptions({
@@ -587,13 +679,35 @@ export class GramlessContext {
     return this.call('editMessageMedia', payload);
   }
 
-  async editKeyboard(buttons) {
-    const chatId = this.chatId;
-    const messageId = this.messageId;
+  async editKeyboard(buttons, options = {}) {
+    const reply_markup = buildInlineKeyboard(buttons) || buttons;
+    if (options.inline_message_id) {
+      return this.call('editMessageReplyMarkup', {
+        reply_markup,
+        ...options,
+      });
+    }
+    if (options.chat_id && options.message_id) {
+      return this.call('editMessageReplyMarkup', {
+        reply_markup,
+        ...options,
+      });
+    }
+    if (this.inlineMessageId) {
+      return this.call('editMessageReplyMarkup', {
+        inline_message_id: this.inlineMessageId,
+        reply_markup,
+        ...options,
+      });
+    }
+
+    const chatId = options.chat_id || this.chatId;
+    const messageId = options.message_id || this.messageId;
     return this.call('editMessageReplyMarkup', {
       chat_id: chatId,
       message_id: messageId,
-      reply_markup: buildInlineKeyboard(buttons) || buttons,
+      reply_markup,
+      ...options,
     });
   }
 
@@ -764,6 +878,23 @@ export class GramlessContext {
 
   async getMyCommands(options = {}) {
     return this.call('getMyCommands', options);
+  }
+
+  /**
+   * Returns basic information about the bot in form of a BotFullInfo object (Bot API 10.5).
+   * @returns {Promise<any>}
+   */
+  async getMe() {
+    return this.call('getMe');
+  }
+
+  /**
+   * Changes settings of the bot (Bot API 10.5). Settings that aren't specified remain unchanged.
+   * @param {Object} [settings={}]
+   * @returns {Promise<boolean>}
+   */
+  async setMySettings(settings = {}) {
+    return this.call('setMySettings', settings);
   }
 
   // --- Inline Queries ---

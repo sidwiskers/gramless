@@ -157,6 +157,16 @@ export const Filter = {
     return Boolean(ctx.paidMessagesWaived || ctx.raw.paid_messages_waived || ctx.message?.paid_messages_waived);
   },
 
+  /** Matches service messages about write access allowed (Bot API 10.5) */
+  hasWriteAccessAllowed(ctx) {
+    return Boolean(ctx.writeAccessAllowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed);
+  },
+
+  /** Matches service messages about users invited by the bot owner (Bot API 10.5) */
+  hasInvitedUser(ctx) {
+    return Boolean(ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -222,5 +232,7 @@ Filter.widgetQuery = Filter.isWidgetQuery;
 Filter.sharedWidgetQuery = Filter.isSharedWidgetQuery;
 Filter.tonTransfer = Filter.hasTonTransfer;
 Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
+Filter.writeAccessAllowed = Filter.hasWriteAccessAllowed;
+Filter.invitedUser = Filter.hasInvitedUser;
 Filter.callback = Filter.isCallback;
 

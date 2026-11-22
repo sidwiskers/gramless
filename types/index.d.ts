@@ -217,6 +217,82 @@ export interface EditWidgetDataOptions {
   chat_data?: string;
 }
 
+// --- Bot API 10.5 Types (Bot Settings, Full Info, Service Invites, Expandable Blockquotes) ---
+
+export interface User {
+  id: number;
+  is_bot: boolean;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  language_code?: string;
+  is_premium?: boolean;
+  added_to_attachment_menu?: boolean;
+  can_connect_to_business?: boolean;
+  has_main_web_app?: boolean;
+  [key: string]: any;
+}
+
+export interface BotFullInfo {
+  id: number;
+  is_bot: true;
+  first_name: string;
+  last_name?: string;
+  username?: string;
+  active_usernames?: string[];
+  can_join_groups: boolean;
+  can_read_all_group_messages: boolean;
+  supports_guest_queries: boolean;
+  supports_inline_queries: boolean;
+  inline_query_placeholder?: string;
+  needs_inline_query_location: boolean;
+  can_connect_to_business: boolean;
+  has_main_web_app: boolean;
+  has_topics_enabled: boolean;
+  allows_users_to_create_topics: boolean;
+  has_topic_sidebar: boolean;
+  can_manage_bots: boolean;
+  supports_join_request_queries: boolean;
+  [key: string]: any;
+}
+
+export interface BotSettings {
+  supports_inline_queries?: boolean;
+  inline_query_placeholder?: string;
+  needs_inline_query_location?: boolean;
+  inline_feedback_share_denominator?: 0 | 1 | 10 | 100 | 1000 | number;
+  can_join_groups?: boolean;
+  can_read_all_group_messages?: boolean;
+  can_connect_to_business?: boolean;
+  can_manage_bots?: boolean;
+  supports_guest_queries?: boolean;
+  supports_join_request_queries?: boolean;
+  has_topics_enabled?: boolean;
+  allows_users_to_create_topics?: boolean;
+  has_topic_sidebar?: boolean;
+  can_communicate_with_bots?: boolean;
+  callback_query_mode?: 'default' | 'auto' | 'inline' | string;
+}
+
+export interface WriteAccessAllowed {
+  from_request?: boolean;
+  web_app_name?: string;
+  from_attachment_menu?: boolean;
+  inviter?: User;
+}
+
+export interface RichBlockExpandableBlockQuotation {
+  type: 'expandable_blockquote';
+  blocks: any[];
+  credit?: any;
+}
+
+export interface InputRichBlockExpandableBlockQuotation {
+  type: 'expandable_blockquote';
+  blocks: any[];
+  credit?: any;
+}
+
 export class GramlessContext {
   raw: Record<string, any>;
   ctx: Record<string, any>;
@@ -269,6 +345,9 @@ export class GramlessContext {
   readonly widget: Widget | null;
   readonly tonWalletTransfer: TonWalletTransfer | null;
   readonly paidMessagesWaived: PaidMessagesWaived | null;
+  readonly inlineMessageId: string | null;
+  readonly writeAccessAllowed: WriteAccessAllowed | null;
+  readonly inviter: User | null;
   readonly oldChatMember: Record<string, any> | null;
   readonly newChatMember: Record<string, any> | null;
   readonly isPrivate: boolean;
@@ -337,6 +416,8 @@ export class GramlessContext {
   exportInviteLink(): Promise<any>;
   setMyCommands(commands: Array<{ command: string; description: string }>, options?: Record<string, any>): Promise<any>;
   getMyCommands(options?: Record<string, any>): Promise<any>;
+  getMe(): Promise<BotFullInfo>;
+  setMySettings(settings?: BotSettings): Promise<boolean>;
 
   answerInlineQuery(results: Array<Record<string, any>>, options?: Record<string, any>): Promise<any>;
   answerShippingQuery(ok: boolean, options?: Record<string, any>): Promise<any>;
@@ -471,6 +552,8 @@ export const Filter: {
   isSharedWidgetQuery: FilterPredicate;
   hasTonTransfer: FilterPredicate;
   hasPaidMessagesWaived: FilterPredicate;
+  hasWriteAccessAllowed: FilterPredicate;
+  hasInvitedUser: FilterPredicate;
   isCallback: FilterPredicate;
   textPrefix(prefix: string): FilterPredicate;
   textMatches(pattern: RegExp): FilterPredicate;
@@ -496,6 +579,8 @@ export const Filter: {
   sharedWidgetQuery: FilterPredicate;
   tonTransfer: FilterPredicate;
   paidMessagesWaived: FilterPredicate;
+  writeAccessAllowed: FilterPredicate;
+  invitedUser: FilterPredicate;
   callback: FilterPredicate;
 };
 

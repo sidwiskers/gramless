@@ -21,6 +21,9 @@ Full method and property specification for `GramlessContext`.
 | `ctx.widget` | `Widget \| null` | HTML widget payload attached to a message |
 | `ctx.tonWalletTransfer` | `TonWalletTransfer \| null` | TON blockchain transfer service message data |
 | `ctx.paidMessagesWaived` | `PaidMessagesWaived \| null` | Waived paid messages count metadata |
+| `ctx.inlineMessageId` | `string \| null` | Inline message ID (available in inline mode or via `callback_query_mode: 'inline' \| 'auto'`) (Bot API 10.5) |
+| `ctx.writeAccessAllowed` | `WriteAccessAllowed \| null` | Write access allowed service message data (Bot API 10.5) |
+| `ctx.inviter` | `User \| null` | Bot owner who invited user via `https://t.me/botinvite/<username>` (Bot API 10.5) |
 | `ctx.elapsedMs` | `number` | Wall-clock milliseconds elapsed since update began |
 | `ctx.deadline` | `number` | Unix timestamp of hard platform isolate execution deadline |
 
@@ -33,14 +36,19 @@ Full method and property specification for `GramlessContext`.
 - `ctx.replyEphemeral(text, options)`: Sends an ephemeral message visible only to the active user; automatically omits `chat_id` and targets callback queries (Bot API 10.4).
 - `ctx.replyWithHtml(html, options)`: Shorthand to send HTML formatted text.
 - `ctx.replyWithMarkdown(markdown, options)`: Shorthand to send MarkdownV2 formatted text.
-- `ctx.edit(text, options)`: Edits current message text.
-- `ctx.editCaption(caption, options)`: Edits current message caption.
-- `ctx.editKeyboard(keyboard)`: Edits current message reply markup.
+- `ctx.edit(text, options)`: Edits current message text. Automatically dispatches via `inline_message_id` when available (Bot API 10.5 `callback_query_mode`).
+- `ctx.editCaption(caption, options)`: Edits current message caption with automatic `inline_message_id` support.
+- `ctx.editMedia(media, options)`: Edits current message media with automatic `inline_message_id` support.
+- `ctx.editKeyboard(keyboard, options)`: Edits current message reply markup with automatic `inline_message_id` support.
 - `ctx.sendPhoto(photo, options)`: Sends photo with optional caption.
 - `ctx.sendVideo(video, options)`: Sends video.
 - `ctx.sendVoice(voice, options)`: Sends voice note.
 - `ctx.sendDocument(doc, options)`: Sends file document.
 - `ctx.sendAnimation(animation, options)`: Sends animation/GIF.
+
+### Bot Settings & Info (Bot API 10.5)
+- `ctx.getMe()`: Retrieves full bot information as a `BotFullInfo` object, including `active_usernames`, `inline_query_placeholder`, `needs_inline_query_location`, and `has_topic_sidebar`.
+- `ctx.setMySettings(settings)`: Programmatically automates bot setup without BotFather (supports inline queries, placeholder, privacy mode, group join permissions, business connection, bot management, private chat forum topics, topic sidebar, bot communication, and `callback_query_mode`).
 
 ### HTML Widgets (Bot API 10.4)
 - `ctx.sendWidget(html, options)`: Sends private interactive HTML widget (1–32,768 bytes, auto-validated, protected from forwarding).

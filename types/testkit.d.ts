@@ -30,7 +30,8 @@ export class LabActor {
   constructor(lab: GramlessLab, profile?: VirtualActorOptions);
   command(text: string): Promise<ActorExpectation>;
   message(text: string, options?: Record<string, any>): Promise<ActorExpectation>;
-  click(data: string, options?: { messageId?: number; inlineMessageId?: string }): Promise<ActorExpectation>;
+  click(data: string, options?: number | { messageId?: number; inlineMessageId?: string }): Promise<ActorExpectation>;
+  joinViaInvite(inviter?: any): Promise<ActorExpectation>;
   inline(query: string, offset?: string): Promise<ActorExpectation>;
   queryWidget(data: string, options?: { messageId?: number; widgetId?: string; type?: any }): Promise<ActorExpectation>;
   querySharedWidget(widgetId: string, data: string, options?: { type?: any }): Promise<ActorExpectation>;

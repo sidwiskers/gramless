@@ -1,8 +1,8 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-173%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-179%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.4%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#november-9-2026)
+[![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.5%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#november-22-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/types-included-blue.svg)](types/index.d.ts)
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
@@ -775,6 +775,62 @@ export default bot.handler({
   executionTimeoutMs: 9500,
 });
 ```
+
+---
+
+## Telegram Bot API 10.5 Support
+
+Gramless includes complete first-class support for the Telegram Bot API 10.5 update:
+
+### 1. Programmatic Bot Settings (`setMySettings` & `getMe`)
+Automate bot configuration entirely via code without manual `@BotFather` setup:
+```javascript
+// Change bot settings programmatically:
+await ctx.setMySettings({
+  supports_inline_queries: true,
+  inline_query_placeholder: 'Search resources...',
+  needs_inline_query_location: false,
+  inline_feedback_share_denominator: 10,
+  can_join_groups: true,
+  can_read_all_group_messages: false,
+  can_connect_to_business: true,
+  can_manage_bots: false,
+  supports_guest_queries: true,
+  supports_join_request_queries: true,
+  has_topics_enabled: true,
+  allows_users_to_create_topics: true,
+  has_topic_sidebar: true,
+  can_communicate_with_bots: true,
+  callback_query_mode: 'inline', // 'default' | 'auto' | 'inline'
+});
+
+// Fetch full bot info (BotFullInfo):
+const botInfo = await ctx.getMe();
+console.log(botInfo.active_usernames, botInfo.has_topic_sidebar);
+```
+
+### 2. Callback Queries Outside Inline Mode (`callback_query_mode`)
+When `callback_query_mode` is set to `'inline'` or `'auto'`, callback queries carry `inline_message_id` instead of `message` even for messages sent by the bot. Context editing methods automatically dispatch using `inline_message_id` without requiring `chat_id` or `message_id`:
+```javascript
+bot.action('vote:yes', async (ctx) => {
+  // Works transparently whether ctx contains message or inline_message_id:
+  await ctx.edit('Thank you for voting! ✅');
+  await ctx.editKeyboard([[{ text: 'Vote Count: 42', data: 'noop' }]]);
+});
+```
+
+### 3. Dedicated Bot Invite Links (`write_access_allowed.inviter`)
+Bot owners can invite up to 10 users simultaneously via `https://t.me/botinvite/<bot_username>`. The bot receives a `write_access_allowed` service message containing the owner user in `ctx.inviter`:
+```javascript
+// Filter or route service messages for invited users:
+bot.on(Filter.invitedUser, async (ctx) => {
+  const inviter = ctx.inviter;
+  await ctx.reply(`Welcome! You were invited by @${inviter.username || inviter.first_name}.`);
+});
+```
+
+### 4. Rich Messages: Arbitrary Expandable Block Quotations
+Expandable block quotes in rich messages now accept arbitrary blocks (`blocks: RichBlock[]`), including paragraphs, tables, and media.
 
 ---
 

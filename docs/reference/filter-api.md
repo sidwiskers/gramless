@@ -32,6 +32,11 @@ Returns a predicate that negates the result of the provided predicate.
 - `Filter.hasPoll` (`Filter.poll`): Passes if update contains a poll.
 - `Filter.hasDice` (`Filter.dice`): Passes if update contains animated dice.
 
+## Bot API 10.5 Filters
+
+- `Filter.hasWriteAccessAllowed` (`Filter.writeAccessAllowed`): Passes if update is a write access granted service notification.
+- `Filter.hasInvitedUser` (`Filter.invitedUser`): Passes if update is a service message about a user invited to a private chat by the bot owner via `https://t.me/botinvite/<bot_username>`.
+
 ---
 
 ## Bot API 10.4 Filters

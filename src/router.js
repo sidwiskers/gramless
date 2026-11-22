@@ -574,8 +574,10 @@ export class GramlessRouter {
     if (ctx.raw?.widget || ctx.message?.widget) types.push('widget');
     if (ctx.raw?.ton_wallet_transfer || ctx.message?.ton_wallet_transfer) types.push('ton_wallet_transfer');
     if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
+    if (ctx.writeAccessAllowed || ctx.update?.write_access_allowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed) types.push('write_access_allowed');
+    if (ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter) types.push('invited_user');
 
-    if (ctx.raw?.data !== undefined || ctx.update?.callback_query) types.push('callback_query');
+    if (ctx.raw?.data !== undefined || ctx.update?.callback_query || (ctx.raw?.chat_instance && (ctx.raw?.id || ctx.raw?.inline_message_id))) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');
     if (ctx.raw?.result_id !== undefined || ctx.update?.chosen_inline_result) types.push('chosen_inline_result');
     if (ctx.raw?.shipping_address || ctx.update?.shipping_query) types.push('shipping_query');

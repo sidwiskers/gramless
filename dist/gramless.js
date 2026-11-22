@@ -5,7 +5,7 @@
  * Drop directly into tgcloud/lib/gramless.js and import:
  *   import { createBot, Filter, session } from './lib/gramless.js';
  * 
- * Version: 1.5.0
+ * Version: 1.6.0
  * License: MIT
  */
 
@@ -578,6 +578,16 @@ export const Filter = {
     return Boolean(ctx.paidMessagesWaived || ctx.raw.paid_messages_waived || ctx.message?.paid_messages_waived);
   },
 
+  /** Matches service messages about write access allowed (Bot API 10.5) */
+  hasWriteAccessAllowed(ctx) {
+    return Boolean(ctx.writeAccessAllowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed);
+  },
+
+  /** Matches service messages about users invited by the bot owner (Bot API 10.5) */
+  hasInvitedUser(ctx) {
+    return Boolean(ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -643,6 +653,8 @@ Filter.widgetQuery = Filter.isWidgetQuery;
 Filter.sharedWidgetQuery = Filter.isSharedWidgetQuery;
 Filter.tonTransfer = Filter.hasTonTransfer;
 Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
+Filter.writeAccessAllowed = Filter.hasWriteAccessAllowed;
+Filter.invitedUser = Filter.hasInvitedUser;
 Filter.callback = Filter.isCallback;
 
 // --- Module: format.js ---
@@ -3515,6 +3527,29 @@ export class GramlessContext {
     return this.raw.paid_messages_waived || this.message?.paid_messages_waived || null;
   }
 
+  get inlineMessageId() {
+    return (
+      this.raw.inline_message_id ||
+      this.update.callback_query?.inline_message_id ||
+      this.update.chosen_inline_result?.inline_message_id ||
+      this.widgetQuery?.inline_message_id ||
+      null
+    );
+  }
+
+  get writeAccessAllowed() {
+    return (
+      this.raw.write_access_allowed ||
+      this.message?.write_access_allowed ||
+      this.update?.message?.write_access_allowed ||
+      null
+    );
+  }
+
+  get inviter() {
+    return this.writeAccessAllowed?.inviter || null;
+  }
+
   get oldChatMember() {
     return this.raw.old_chat_member || this.update.chat_member?.old_chat_member || this.update.my_chat_member?.old_chat_member || null;
   }
@@ -3756,11 +3791,34 @@ export class GramlessContext {
   // --- Message Management & Editing ---
 
   async edit(text, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        text,
+        ...options,
+      });
+      return this.call('editMessageText', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
 
     if (!chatId || !messageId) {
-      throw new ApiError('editMessageText', 'Missing chat_id or message_id for edit', 400);
+      throw new ApiError('editMessageText', 'Missing chat_id/message_id or inline_message_id for edit', 400);
     }
 
     const payload = normalizeMarkupOptions({
@@ -3773,6 +3831,29 @@ export class GramlessContext {
   }
 
   async editCaption(caption, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        caption,
+        ...options,
+      });
+      return this.call('editMessageCaption', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
     const payload = normalizeMarkupOptions({
@@ -3785,6 +3866,29 @@ export class GramlessContext {
   }
 
   async editMedia(media, options = {}) {
+    if (options.inline_message_id) {
+      const payload = normalizeMarkupOptions({
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+    if (options.chat_id && options.message_id) {
+      const payload = normalizeMarkupOptions({
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+    if (this.inlineMessageId) {
+      const payload = normalizeMarkupOptions({
+        inline_message_id: this.inlineMessageId,
+        media,
+        ...options,
+      });
+      return this.call('editMessageMedia', payload);
+    }
+
     const chatId = options.chat_id || this.chatId;
     const messageId = options.message_id || this.messageId;
     const payload = normalizeMarkupOptions({
@@ -3796,13 +3900,35 @@ export class GramlessContext {
     return this.call('editMessageMedia', payload);
   }
 
-  async editKeyboard(buttons) {
-    const chatId = this.chatId;
-    const messageId = this.messageId;
+  async editKeyboard(buttons, options = {}) {
+    const reply_markup = buildInlineKeyboard(buttons) || buttons;
+    if (options.inline_message_id) {
+      return this.call('editMessageReplyMarkup', {
+        reply_markup,
+        ...options,
+      });
+    }
+    if (options.chat_id && options.message_id) {
+      return this.call('editMessageReplyMarkup', {
+        reply_markup,
+        ...options,
+      });
+    }
+    if (this.inlineMessageId) {
+      return this.call('editMessageReplyMarkup', {
+        inline_message_id: this.inlineMessageId,
+        reply_markup,
+        ...options,
+      });
+    }
+
+    const chatId = options.chat_id || this.chatId;
+    const messageId = options.message_id || this.messageId;
     return this.call('editMessageReplyMarkup', {
       chat_id: chatId,
       message_id: messageId,
-      reply_markup: buildInlineKeyboard(buttons) || buttons,
+      reply_markup,
+      ...options,
     });
   }
 
@@ -3973,6 +4099,23 @@ export class GramlessContext {
 
   async getMyCommands(options = {}) {
     return this.call('getMyCommands', options);
+  }
+
+  /**
+   * Returns basic information about the bot in form of a BotFullInfo object (Bot API 10.5).
+   * @returns {Promise<any>}
+   */
+  async getMe() {
+    return this.call('getMe');
+  }
+
+  /**
+   * Changes settings of the bot (Bot API 10.5). Settings that aren't specified remain unchanged.
+   * @param {Object} [settings={}]
+   * @returns {Promise<boolean>}
+   */
+  async setMySettings(settings = {}) {
+    return this.call('setMySettings', settings);
   }
 
   // --- Inline Queries ---
@@ -5025,8 +5168,10 @@ export class GramlessRouter {
     if (ctx.raw?.widget || ctx.message?.widget) types.push('widget');
     if (ctx.raw?.ton_wallet_transfer || ctx.message?.ton_wallet_transfer) types.push('ton_wallet_transfer');
     if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
+    if (ctx.writeAccessAllowed || ctx.update?.write_access_allowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed) types.push('write_access_allowed');
+    if (ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter) types.push('invited_user');
 
-    if (ctx.raw?.data !== undefined || ctx.update?.callback_query) types.push('callback_query');
+    if (ctx.raw?.data !== undefined || ctx.update?.callback_query || (ctx.raw?.chat_instance && (ctx.raw?.id || ctx.raw?.inline_message_id))) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');
     if (ctx.raw?.result_id !== undefined || ctx.update?.chosen_inline_result) types.push('chosen_inline_result');
     if (ctx.raw?.shipping_address || ctx.update?.shipping_query) types.push('shipping_query');

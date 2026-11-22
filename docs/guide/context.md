@@ -73,6 +73,26 @@ await ctx.reply('Quoting rich block', {
 
 ---
 
+## Bot Settings Automation & Full Info (Bot API 10.5)
+
+```javascript
+// Automate bot settings programmatically:
+await ctx.setMySettings({
+  supports_inline_queries: true,
+  inline_query_placeholder: 'Search resources...',
+  has_topics_enabled: true,
+  has_topic_sidebar: true,
+  can_communicate_with_bots: true,
+  callback_query_mode: 'inline',
+});
+
+// Retrieve full bot info (BotFullInfo):
+const botInfo = await ctx.getMe();
+console.log(botInfo.active_usernames, botInfo.has_topic_sidebar);
+```
+
+---
+
 ## Execution Budget & Transactional Checkpointing
 
 ```javascript

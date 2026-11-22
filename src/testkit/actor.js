@@ -199,11 +199,20 @@ export class LabActor {
   /**
    * Simulates clicking an inline keyboard button.
    * @param {string} data The callback_data payload
-   * @param {number} [messageId=99]
+   * @param {number|{ messageId?: number, inlineMessageId?: string }} [options=99]
    * @returns {Promise<ActorExpectation>}
    */
-  async click(data, messageId = 99) {
+  async click(data, options = 99) {
     const startCallIndex = this.lab.api.calls.length;
+    let messageId = 99;
+    let inlineMessageId = null;
+
+    if (typeof options === 'number') {
+      messageId = options;
+    } else if (typeof options === 'object' && options !== null) {
+      if (options.messageId !== undefined) messageId = options.messageId;
+      if (options.inlineMessageId !== undefined) inlineMessageId = options.inlineMessageId;
+    }
 
     const rawQuery = {
       id: `query_${this.updateCounter++}`,
@@ -213,13 +222,18 @@ export class LabActor {
         first_name: this.firstName,
         username: this.username,
       },
-      message: {
+      data,
+    };
+
+    if (inlineMessageId) {
+      rawQuery.inline_message_id = inlineMessageId;
+    } else {
+      rawQuery.message = {
         message_id: messageId,
         chat: { id: this.chatId, type: this.chatType },
         text: 'Original message text',
-      },
-      data,
-    };
+      };
+    }
 
     const update = {
       update_id: this.updateCounter++,
@@ -227,6 +241,44 @@ export class LabActor {
     };
 
     await this.lab.router.handle(rawQuery, { update }, this.lab.api);
+
+    const callsSince = this.lab.api.calls.slice(startCallIndex);
+    return new ActorExpectation(callsSince);
+  }
+
+  /**
+   * Simulates a user joining via dedicated bot invite link https://t.me/botinvite/<bot_username> (Bot API 10.5).
+   * @param {Object} [inviter={ id: 99999, first_name: 'Owner', is_bot: false }]
+   * @returns {Promise<ActorExpectation>}
+   */
+  async joinViaInvite(inviter = { id: 99999, first_name: 'Owner', is_bot: false }) {
+    const startCallIndex = this.lab.api.calls.length;
+
+    const rawMessage = {
+      message_id: this.updateCounter++,
+      from: {
+        id: this.id,
+        is_bot: false,
+        first_name: this.firstName,
+        username: this.username,
+      },
+      chat: {
+        id: this.chatId,
+        type: 'private',
+        first_name: this.firstName,
+      },
+      date: Math.floor(Date.now() / 1000),
+      write_access_allowed: {
+        inviter,
+      },
+    };
+
+    const update = {
+      update_id: this.updateCounter++,
+      message: rawMessage,
+    };
+
+    await this.lab.router.handle(rawMessage, { update }, this.lab.api);
 
     const callsSince = this.lab.api.calls.slice(startCallIndex);
     return new ActorExpectation(callsSince);
