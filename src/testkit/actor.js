@@ -385,4 +385,46 @@ export class LabActor {
     const callsSince = this.lab.api.calls.slice(startCallIndex);
     return new ActorExpectation(callsSince);
   }
+
+  /**
+   * Simulates a user submitting data from a Telegram Mini App (Telegram.WebApp.sendData).
+   * @param {string|Record<string, any>} data Data string or object (serialized automatically to JSON)
+   * @param {Object} [options={}]
+   * @param {string} [options.buttonText='Open Mini App']
+   * @returns {Promise<ActorExpectation>}
+   */
+  async sendWebAppData(data, options = {}) {
+    const startCallIndex = this.lab.api.calls.length;
+
+    const rawData = typeof data === 'object' ? JSON.stringify(data) : String(data);
+    const rawMessage = {
+      message_id: this.updateCounter++,
+      from: {
+        id: this.id,
+        is_bot: false,
+        first_name: this.firstName,
+        username: this.username,
+      },
+      chat: {
+        id: this.chatId,
+        type: this.chatType,
+        first_name: this.firstName,
+      },
+      date: Math.floor(Date.now() / 1000),
+      web_app_data: {
+        data: rawData,
+        button_text: options.buttonText || 'Open Mini App',
+      },
+    };
+
+    const update = {
+      update_id: this.updateCounter++,
+      message: rawMessage,
+    };
+
+    await this.lab.router.handle(rawMessage, { update }, this.lab.api);
+
+    const callsSince = this.lab.api.calls.slice(startCallIndex);
+    return new ActorExpectation(callsSince);
+  }
 }

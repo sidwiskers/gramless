@@ -167,6 +167,11 @@ export const Filter = {
     return Boolean(ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter);
   },
 
+  /** Matches Mini App data submissions sent via Telegram.WebApp.sendData() */
+  hasWebAppData(ctx) {
+    return Boolean(ctx.webAppData || ctx.raw?.web_app_data || ctx.message?.web_app_data);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -234,5 +239,6 @@ Filter.tonTransfer = Filter.hasTonTransfer;
 Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
 Filter.writeAccessAllowed = Filter.hasWriteAccessAllowed;
 Filter.invitedUser = Filter.hasInvitedUser;
+Filter.webAppData = Filter.hasWebAppData;
 Filter.callback = Filter.isCallback;
 

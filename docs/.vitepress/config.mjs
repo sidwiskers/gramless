@@ -69,6 +69,7 @@ export default defineConfig({
             { text: '07. Lab Testing', link: '/cookbook/07-lab-testing' },
             { text: '08. Migration Guide', link: '/cookbook/08-migration-guide' },
             { text: '09. Bot Settings & Invites', link: '/cookbook/09-bot-settings-and-invites' },
+            { text: '10. Full-Stack Mini App', link: '/cookbook/10-fullstack-mini-app' },
           ],
         },
       ],

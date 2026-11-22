@@ -348,6 +348,8 @@ export class GramlessContext {
   readonly inlineMessageId: string | null;
   readonly writeAccessAllowed: WriteAccessAllowed | null;
   readonly inviter: User | null;
+  readonly webAppData: { data: string; button_text: string } | null;
+  readonly webAppPayload: any;
   readonly oldChatMember: Record<string, any> | null;
   readonly newChatMember: Record<string, any> | null;
   readonly isPrivate: boolean;
@@ -452,6 +454,33 @@ export class GramlessContext {
   getUniqueGift(name: string): Promise<any>;
   deleteBusinessAccountGift(businessConnectionId: string, ownedGiftId: string): Promise<boolean>;
   getChatShareThemeBackdrops(): Promise<any>;
+  answerWebAppQuery(webAppQueryId: string, result: Record<string, any>, options?: Record<string, any>): Promise<any>;
+  savePreparedInlineMessage(result: Record<string, any>, options?: {
+    userId?: number;
+    allowUserChats?: boolean;
+    allowBotChats?: boolean;
+    allowGroupChats?: boolean;
+    allowChannelChats?: boolean;
+    [key: string]: any;
+  }): Promise<{ id: string; expiration_date: number }>;
+  setChatMenuButton(options?: {
+    chatId?: number | string;
+    type?: 'web_app' | 'commands' | 'default';
+    text?: string;
+    url?: string;
+    menuButton?: Record<string, any>;
+    [key: string]: any;
+  }): Promise<boolean>;
+  setMenuButton(options?: {
+    chatId?: number | string;
+    type?: 'web_app' | 'commands' | 'default';
+    text?: string;
+    url?: string;
+    menuButton?: Record<string, any>;
+    [key: string]: any;
+  }): Promise<boolean>;
+  getChatMenuButton(options?: { chatId?: number | string; [key: string]: any }): Promise<Record<string, any>>;
+  getMenuButton(options?: { chatId?: number | string; [key: string]: any }): Promise<Record<string, any>>;
 }
 
 export type HandlerFunction = (ctx: GramlessContext) => Promise<any> | any;
@@ -476,6 +505,8 @@ export class GramlessRouter {
   callback(trigger: string | RegExp, ...handlers: HandlerFunction[]): this;
   widgetQuery(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
   widget(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
+  webApp(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
+  webAppData(trigger?: string | RegExp | HandlerFunction, ...handlers: HandlerFunction[]): this;
   hears(pattern: string | RegExp, ...handlers: HandlerFunction[]): this;
   on(trigger: string | FilterPredicate, ...handlers: HandlerFunction[]): this;
   group(filter?: FilterPredicate): GramlessRouter;
@@ -554,6 +585,7 @@ export const Filter: {
   hasPaidMessagesWaived: FilterPredicate;
   hasWriteAccessAllowed: FilterPredicate;
   hasInvitedUser: FilterPredicate;
+  hasWebAppData: FilterPredicate;
   isCallback: FilterPredicate;
   textPrefix(prefix: string): FilterPredicate;
   textMatches(pattern: RegExp): FilterPredicate;
@@ -581,6 +613,7 @@ export const Filter: {
   paidMessagesWaived: FilterPredicate;
   writeAccessAllowed: FilterPredicate;
   invitedUser: FilterPredicate;
+  webAppData: FilterPredicate;
   callback: FilterPredicate;
 };
 
@@ -1021,6 +1054,9 @@ export function createBot(options?: {
   api?: any;
   onError?: (err: Error, ctx: GramlessContext) => any;
 }): GramlessRouter;
+
+export * from './client.js';
+export * from './webapp.js';
 
 export default createBot;
 

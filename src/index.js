@@ -83,6 +83,15 @@ export {
   BatchJob,
   createBatchJob,
 } from './batch.js';
+export {
+  createClient,
+  GramlessClient,
+  GramlessClientError,
+} from './client.js';
+export {
+  renderMiniAppHtml,
+  getTelegramThemeCss,
+} from './webapp.js';
 
 /**
  * Creates a new Gramless bot application router.

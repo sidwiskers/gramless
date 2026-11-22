@@ -1,12 +1,12 @@
 # Gramless
 
-[![Tests](https://img.shields.io/badge/tests-179%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-186%20passed-brightgreen.svg)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bot API](https://img.shields.io/badge/Telegram%20Bot%20API-10.5%20ready-blue.svg)](https://core.telegram.org/bots/api-changelog#november-22-2026)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/types-included-blue.svg)](types/index.d.ts)
 [![TGCloud Runtime](https://img.shields.io/badge/runtime-Telegram%20Serverless%20(V8)-orange.svg)](https://tgcloud.ai)
-[![Cookbook](https://img.shields.io/badge/cookbook-8%20recipes-purple.svg)](https://github.com/sidwiskers/gramless-cookbook)
+[![Cookbook](https://img.shields.io/badge/cookbook-10%20recipes-purple.svg)](https://github.com/sidwiskers/gramless-cookbook)
 
 **Gramless** is a zero-dependency Telegram bot framework built for **Telegram Serverless (TGCloud)**, Cloudflare Workers, and traditional Node.js servers.
 
@@ -308,9 +308,13 @@ bot.use(onboarding.middleware());
 
 ---
 
-## 6. Mini App RPC Endpoints
+## 6. Full-Stack Telegram Mini Apps (TMAs)
 
-Host serverless RPC functions in `tgcloud/endpoints/*.js` called directly from your Mini App via `Telegram.WebApp.Serverless.call`. Gramless verifies caller identity (`ctx.initData`) and validates payloads without external dependencies:
+Gramless provides an end-to-end suite for building Telegram Mini Apps on Telegram Serverless (TGCloud): from backend RPC endpoints and cryptographic auth to browser RPC client libraries and zero-build HTML generators.
+
+### 6.1 Backend RPC Endpoints (`gramless/endpoint`)
+
+Host serverless RPC functions in `tgcloud/endpoints/*.js` called directly from your Mini App frontend. Gramless verifies caller identity (`ctx.initData`) and validates payloads without external dependencies:
 
 ```javascript
 // tgcloud/endpoints/submitOrder.js
@@ -323,10 +327,61 @@ export default createEndpoint({
     quantity: v.number({ min: 1, max: 99 }),
   }),
 }, async (ctx) => {
-  const user = ctx.user; // Verified Telegram user
-  const { productId, quantity } = ctx.input; // Guaranteed valid
+  const user = ctx.user; // Verified Telegram caller identity
+  const { productId, quantity } = ctx.input; // Guaranteed valid payload
 
   return { orderId: 'ORD-' + Date.now(), buyer: user.first_name };
+});
+```
+
+### 6.2 Zero-Dependency Frontend Client (`gramless/client`)
+
+Call backend RPC endpoints from your Mini App frontend (`public/`) with automatic `initData` injection, error handling, haptics, and promisified CloudStorage:
+
+```javascript
+import { createClient } from 'gramless/client';
+
+const client = createClient();
+
+// Automatically authenticates caller via window.Telegram.WebApp.initData
+const order = await client.call('submitOrder', { productId: 'item_101', quantity: 2 });
+client.haptic.notification('success');
+
+// Native CloudStorage promisified
+await client.cloudStorage.setItem('last_order', order.orderId);
+```
+
+### 6.3 Bot-Side Mini App Service Message Routing
+
+Handle data submitted back to the bot via `Telegram.WebApp.sendData()` with automatic JSON payload parsing and filter matching:
+
+```javascript
+// Matches exact string, JSON action, or regex
+bot.webApp('checkout_complete', async (ctx) => {
+  const payload = ctx.webAppPayload;
+  await ctx.reply(`Thanks for your order <b>#${payload.orderId}</b>!`, { parse_mode: 'HTML' });
+});
+
+// Configure chat menu button to launch your Mini App
+bot.command('menu', async (ctx) => {
+  await ctx.setChatMenuButton({
+    type: 'web_app',
+    text: 'Launch Store 🚀',
+    url: 'https://store.tgcloud.ai',
+  });
+});
+```
+
+### 6.4 Zero-Build Mini App HTML Generator (`gramless/webapp`)
+
+Quickly render Telegram design-compliant Mini App pages without configuring frontend build tools:
+
+```javascript
+import { renderMiniAppHtml } from 'gramless/webapp';
+
+const html = renderMiniAppHtml({
+  title: 'My Store',
+  body: '<div class="tma-card"><h1>Welcome to Mini App</h1></div>',
 });
 ```
 

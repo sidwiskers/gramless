@@ -147,6 +147,9 @@ export class GramlessRouter {
     /** @type {Array<Function>} General widget query handlers */
     this.widgetHandlers = [];
 
+    /** @type {Array<{ pattern: string|RegExp|null, handler: Function }>} Mini App web_app_data routes */
+    this.webAppRoutes = [];
+
     /** @type {Array<{ pattern: RegExp|string, handler: Function }>} Hears text routes */
     this.hearsRoutes = [];
 
@@ -271,6 +274,35 @@ export class GramlessRouter {
    */
   widget(trigger, ...handlers) {
     return this.widgetQuery(trigger, ...handlers);
+  }
+
+  /**
+   * Registers a handler for Mini App data submitted via Telegram.WebApp.sendData().
+   * Supports exact string, RegExp, JSON action/type string, or catch-all handler.
+   * 
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  webApp(trigger, ...handlers) {
+    if (typeof trigger === 'function') {
+      const pipeline = this._compileRoute([trigger, ...handlers]);
+      this.webAppRoutes.push({ pattern: null, handler: pipeline });
+      return this;
+    }
+    const pipeline = this._compileRoute(handlers);
+    this.webAppRoutes.push({ pattern: trigger, handler: pipeline });
+    return this;
+  }
+
+  /**
+   * Alias for webApp(): Registers a handler for Mini App data.
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  webAppData(trigger, ...handlers) {
+    return this.webApp(trigger, ...handlers);
   }
 
   /**
@@ -510,6 +542,41 @@ export class GramlessRouter {
       }
     }
 
+    // 3.5. Mini App WebAppData matching (Telegram.WebApp.sendData)
+    if (ctx.webAppData && this.webAppRoutes.length > 0) {
+      const appData = ctx.webAppData.data || '';
+      const payload = ctx.webAppPayload;
+      for (let i = 0; i < this.webAppRoutes.length; i++) {
+        const { pattern, handler } = this.webAppRoutes[i];
+        if (pattern === null) {
+          ctx.match = [appData];
+          await handler(ctx);
+          return true;
+        }
+        if (typeof pattern === 'string') {
+          if (pattern === appData) {
+            ctx.match = [appData];
+            await handler(ctx);
+            return true;
+          }
+          if (payload && typeof payload === 'object') {
+            if (payload.action === pattern || payload.type === pattern || payload.event === pattern) {
+              ctx.match = [pattern];
+              await handler(ctx);
+              return true;
+            }
+          }
+        } else if (pattern instanceof RegExp) {
+          const match = appData.match(pattern);
+          if (match) {
+            ctx.match = match;
+            await handler(ctx);
+            return true;
+          }
+        }
+      }
+    }
+
     // 4. Hears (Text pattern matching)
     if (text) {
       for (let i = 0; i < this.hearsRoutes.length; i++) {
@@ -576,6 +643,10 @@ export class GramlessRouter {
     if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
     if (ctx.writeAccessAllowed || ctx.update?.write_access_allowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed) types.push('write_access_allowed');
     if (ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter) types.push('invited_user');
+    if (ctx.webAppData || ctx.raw?.web_app_data || ctx.message?.web_app_data || ctx.update?.message?.web_app_data) {
+      types.push('web_app_data');
+      types.push('web_app');
+    }
 
     if (ctx.raw?.data !== undefined || ctx.update?.callback_query || (ctx.raw?.chat_instance && (ctx.raw?.id || ctx.raw?.inline_message_id))) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');

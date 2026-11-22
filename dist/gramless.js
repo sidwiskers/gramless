@@ -5,7 +5,7 @@
  * Drop directly into tgcloud/lib/gramless.js and import:
  *   import { createBot, Filter, session } from './lib/gramless.js';
  * 
- * Version: 1.6.0
+ * Version: 1.7.0
  * License: MIT
  */
 
@@ -588,6 +588,11 @@ export const Filter = {
     return Boolean(ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter);
   },
 
+  /** Matches Mini App data submissions sent via Telegram.WebApp.sendData() */
+  hasWebAppData(ctx) {
+    return Boolean(ctx.webAppData || ctx.raw?.web_app_data || ctx.message?.web_app_data);
+  },
+
   /** Matches callback query button interactions */
   isCallback(ctx) {
     return ctx.data !== null;
@@ -655,6 +660,7 @@ Filter.tonTransfer = Filter.hasTonTransfer;
 Filter.paidMessagesWaived = Filter.hasPaidMessagesWaived;
 Filter.writeAccessAllowed = Filter.hasWriteAccessAllowed;
 Filter.invitedUser = Filter.hasInvitedUser;
+Filter.webAppData = Filter.hasWebAppData;
 Filter.callback = Filter.isCallback;
 
 // --- Module: format.js ---
@@ -930,6 +936,230 @@ export const fmt = {
     return new RawString(`<code>${escapeHtml(number)}</code>`);
   },
 };
+
+// --- Module: webapp.js ---
+/**
+ * Gramless Mini App UI & HTML Generator (`gramless/webapp`)
+ * 
+ * Generates zero-build, pixel-perfect Telegram Mini App (TMA) HTML pages
+ * conforming directly to Telegram design guidelines and theme variables.
+ */
+
+/**
+ * Escapes HTML characters to prevent XSS.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Generates the standard Telegram Mini App CSS stylesheet.
+ * Leverages native Telegram theme variables with polished system fallbacks.
+ * 
+ * @returns {string}
+ */
+export function getTelegramThemeCss() {
+  return `
+    :root {
+      --bg-color: var(--tg-theme-bg-color, #ffffff);
+      --text-color: var(--tg-theme-text-color, #000000);
+      --hint-color: var(--tg-theme-hint-color, #999999);
+      --link-color: var(--tg-theme-link-color, #2481cc);
+      --button-color: var(--tg-theme-button-color, #2481cc);
+      --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+      --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
+      --header-bg: var(--tg-theme-header-bg-color, #ffffff);
+      --section-bg: var(--tg-theme-section-bg-color, #ffffff);
+      --section-separator: var(--tg-theme-section-separator-color, #e5e7eb);
+      --destructive-text: var(--tg-theme-destructive-text-color, #ff3b30);
+      --border-radius: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-color: var(--tg-theme-bg-color, #17212b);
+        --text-color: var(--tg-theme-text-color, #f5f5f5);
+        --hint-color: var(--tg-theme-hint-color, #708499);
+        --link-color: var(--tg-theme-link-color, #6ab2f2);
+        --button-color: var(--tg-theme-button-color, #5288c1);
+        --button-text-color: var(--tg-theme-button-text-color, #ffffff);
+        --secondary-bg: var(--tg-theme-secondary-bg-color, #0e1621);
+        --header-bg: var(--tg-theme-header-bg-color, #17212b);
+        --section-bg: var(--tg-theme-section-bg-color, #17212b);
+        --section-separator: var(--tg-theme-section-separator-color, #242f3d);
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.45;
+      padding: 16px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .tma-container {
+      max-width: 480px;
+      margin: 0 auto;
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tma-card {
+      background: var(--section-bg);
+      border: 1px solid var(--section-separator);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .tma-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .tma-hint {
+      color: var(--hint-color);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    .tma-btn {
+      display: block;
+      width: 100%;
+      padding: 14px 18px;
+      border: none;
+      border-radius: var(--border-radius);
+      background-color: var(--button-color);
+      color: var(--button-text-color);
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: opacity 0.15s ease, transform 0.05s ease;
+      text-decoration: none;
+    }
+
+    .tma-btn:active {
+      opacity: 0.85;
+      transform: scale(0.99);
+    }
+
+    .tma-btn-secondary {
+      background-color: var(--secondary-bg);
+      color: var(--link-color);
+      margin-top: 10px;
+    }
+
+    .tma-input-group {
+      margin-bottom: 16px;
+    }
+
+    .tma-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--hint-color);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .tma-input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--section-separator);
+      background-color: var(--secondary-bg);
+      color: var(--text-color);
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    .tma-input:focus {
+      border-color: var(--link-color);
+    }
+  `;
+}
+
+/**
+ * Renders a full, self-contained Telegram Mini App HTML page string.
+ * Perfect for zero-build static hosting in TGCloud's `public/index.html`.
+ * 
+ * @param {Object} [options={}]
+ * @param {string} [options.title='Telegram Mini App'] Page title
+ * @param {string} [options.body=''] Inner HTML content for container
+ * @param {string} [options.styles=''] Additional custom CSS
+ * @param {string} [options.scripts=''] Additional custom client-side JavaScript
+ * @param {boolean} [options.includeTelegramScript=true] Whether to include telegram-web-app.js
+ * @returns {string} Fully rendered HTML document
+ */
+export function renderMiniAppHtml(options = {}) {
+  const title = escapeHtml(options.title || 'Telegram Mini App');
+  const bodyContent = options.body || `
+    <div class="tma-card">
+      <h1 class="tma-title">${title}</h1>
+      <p class="tma-hint">Powered by Gramless on Telegram Serverless.</p>
+    </div>
+  `;
+  const customStyles = options.styles || '';
+  const customScripts = options.scripts || '';
+  const includeTelegram = options.includeTelegramScript !== false;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>${title}</title>
+  ${includeTelegram ? '<script src="https://telegram.org/js/telegram-web-app.js"></script>' : ''}
+  <style>
+    ${getTelegramThemeCss()}
+    ${customStyles}
+  </style>
+</head>
+<body>
+  <div class="tma-container">
+    ${bodyContent}
+  </div>
+  <script>
+    (function() {
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+      }
+    })();
+    ${customScripts}
+  </script>
+</body>
+</html>`;
+}
 
 // --- Module: init_data.js ---
 /**
@@ -3550,6 +3780,33 @@ export class GramlessContext {
     return this.writeAccessAllowed?.inviter || null;
   }
 
+  /**
+   * Service message payload received when a Mini App calls Telegram.WebApp.sendData().
+   * @returns {{ data: string, button_text: string } | null}
+   */
+  get webAppData() {
+    return (
+      this.raw.web_app_data ||
+      this.message?.web_app_data ||
+      this.update?.message?.web_app_data ||
+      null
+    );
+  }
+
+  /**
+   * Auto-parsed payload from webAppData.data (parsed as JSON if valid, otherwise raw string).
+   * @returns {any}
+   */
+  get webAppPayload() {
+    const data = this.webAppData?.data;
+    if (!data) return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return data;
+    }
+  }
+
   get oldChatMember() {
     return this.raw.old_chat_member || this.update.chat_member?.old_chat_member || this.update.my_chat_member?.old_chat_member || null;
   }
@@ -4387,6 +4644,128 @@ export class GramlessContext {
   async getChatShareThemeBackdrops() {
     return this.call('getChatShareThemeBackdrops', {});
   }
+
+  /**
+   * Sets the result of an interaction with a Web App and sends a corresponding message
+   * on behalf of the user to the chat from which the query originated.
+   * 
+   * @param {string} webAppQueryId Unique identifier for the query to be answered
+   * @param {Record<string, any>} result InlineQueryResult object
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<{ ok: boolean, result?: any }>}
+   */
+  async answerWebAppQuery(webAppQueryId, result, options = {}) {
+    return this.call('answerWebAppQuery', {
+      web_app_query_id: webAppQueryId,
+      result,
+      ...options,
+    });
+  }
+
+  /**
+   * Stores a message that can be sent by a user of a Mini App.
+   * Returns a PreparedInlineMessage object containing an `id` that can be passed to
+   * `Telegram.WebApp.shareMessage(id)`.
+   * 
+   * @param {Record<string, any>} result InlineQueryResult object
+   * @param {Object} [options={}]
+   * @param {number} [options.userId] Target user ID (defaults to ctx.userId)
+   * @param {boolean} [options.allowUserChats=true]
+   * @param {boolean} [options.allowBotChats=true]
+   * @param {boolean} [options.allowGroupChats=true]
+   * @param {boolean} [options.allowChannelChats=true]
+   * @returns {Promise<{ id: string, expiration_date: number }>}
+   */
+  async savePreparedInlineMessage(result, options = {}) {
+    const userId = options.userId || this.userId;
+    if (!userId) {
+      throw new GramlessError('User ID is required to save a prepared inline message (ctx.userId missing)');
+    }
+    const payload = {
+      user_id: userId,
+      result,
+      allow_user_chats: options.allowUserChats ?? options.allow_user_chats ?? true,
+      allow_bot_chats: options.allowBotChats ?? options.allow_bot_chats ?? true,
+      allow_group_chats: options.allowGroupChats ?? options.allow_group_chats ?? true,
+      allow_channel_chats: options.allowChannelChats ?? options.allow_channel_chats ?? true,
+      ...options,
+    };
+    delete payload.allowUserChats;
+    delete payload.allowBotChats;
+    delete payload.allowGroupChats;
+    delete payload.allowChannelChats;
+    delete payload.userId;
+    return this.call('savePreparedInlineMessage', payload);
+  }
+
+  /**
+   * Changes the bot's menu button in a private chat, or the default menu button.
+   * 
+   * @param {Object} [options={}]
+   * @param {number|string} [options.chatId] Target chat (defaults to private chat if in private context)
+   * @param {string} [options.type='web_app'] 'web_app' | 'commands' | 'default'
+   * @param {string} [options.text] Button text (required for web_app)
+   * @param {string} [options.url] Web App URL (for web_app type)
+   * @param {Record<string, any>} [options.menuButton] Raw MenuButton override
+   * @returns {Promise<boolean>}
+   */
+  async setChatMenuButton(options = {}) {
+    const payload = {};
+    if (options.chatId || options.chat_id) {
+      payload.chat_id = options.chatId || options.chat_id;
+    } else if (this.isPrivate && this.chatId) {
+      payload.chat_id = this.chatId;
+    }
+
+    if (options.menuButton || options.menu_button) {
+      payload.menu_button = options.menuButton || options.menu_button;
+    } else if (options.url || options.type === 'web_app') {
+      payload.menu_button = {
+        type: 'web_app',
+        text: options.text || 'Open App',
+        web_app: { url: options.url },
+      };
+    } else if (options.type === 'commands') {
+      payload.menu_button = { type: 'commands' };
+    } else if (options.type === 'default') {
+      payload.menu_button = { type: 'default' };
+    }
+
+    return this.call('setChatMenuButton', payload);
+  }
+
+  /**
+   * Alias for setChatMenuButton.
+   * @param {Object} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async setMenuButton(options = {}) {
+    return this.setChatMenuButton(options);
+  }
+
+  /**
+   * Gets the current value of the bot's menu button in a private chat, or the default menu button.
+   * @param {Object} [options={}]
+   * @returns {Promise<Record<string, any>>}
+   */
+  async getChatMenuButton(options = {}) {
+    const payload = {};
+    if (options.chatId || options.chat_id) {
+      payload.chat_id = options.chatId || options.chat_id;
+    } else if (this.isPrivate && this.chatId) {
+      payload.chat_id = this.chatId;
+    }
+    return this.call('getChatMenuButton', payload);
+  }
+
+  /**
+   * Alias for getChatMenuButton.
+   * @param {Object} [options={}]
+   * @returns {Promise<Record<string, any>>}
+   */
+  async getMenuButton(options = {}) {
+    return this.getChatMenuButton(options);
+  }
 }
 
 // --- Module: batch.js ---
@@ -4741,6 +5120,9 @@ export class GramlessRouter {
     /** @type {Array<Function>} General widget query handlers */
     this.widgetHandlers = [];
 
+    /** @type {Array<{ pattern: string|RegExp|null, handler: Function }>} Mini App web_app_data routes */
+    this.webAppRoutes = [];
+
     /** @type {Array<{ pattern: RegExp|string, handler: Function }>} Hears text routes */
     this.hearsRoutes = [];
 
@@ -4865,6 +5247,35 @@ export class GramlessRouter {
    */
   widget(trigger, ...handlers) {
     return this.widgetQuery(trigger, ...handlers);
+  }
+
+  /**
+   * Registers a handler for Mini App data submitted via Telegram.WebApp.sendData().
+   * Supports exact string, RegExp, JSON action/type string, or catch-all handler.
+   * 
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  webApp(trigger, ...handlers) {
+    if (typeof trigger === 'function') {
+      const pipeline = this._compileRoute([trigger, ...handlers]);
+      this.webAppRoutes.push({ pattern: null, handler: pipeline });
+      return this;
+    }
+    const pipeline = this._compileRoute(handlers);
+    this.webAppRoutes.push({ pattern: trigger, handler: pipeline });
+    return this;
+  }
+
+  /**
+   * Alias for webApp(): Registers a handler for Mini App data.
+   * @param {string|RegExp|Function} [trigger]
+   * @param {...Function} handlers
+   * @returns {this}
+   */
+  webAppData(trigger, ...handlers) {
+    return this.webApp(trigger, ...handlers);
   }
 
   /**
@@ -5104,6 +5515,41 @@ export class GramlessRouter {
       }
     }
 
+    // 3.5. Mini App WebAppData matching (Telegram.WebApp.sendData)
+    if (ctx.webAppData && this.webAppRoutes.length > 0) {
+      const appData = ctx.webAppData.data || '';
+      const payload = ctx.webAppPayload;
+      for (let i = 0; i < this.webAppRoutes.length; i++) {
+        const { pattern, handler } = this.webAppRoutes[i];
+        if (pattern === null) {
+          ctx.match = [appData];
+          await handler(ctx);
+          return true;
+        }
+        if (typeof pattern === 'string') {
+          if (pattern === appData) {
+            ctx.match = [appData];
+            await handler(ctx);
+            return true;
+          }
+          if (payload && typeof payload === 'object') {
+            if (payload.action === pattern || payload.type === pattern || payload.event === pattern) {
+              ctx.match = [pattern];
+              await handler(ctx);
+              return true;
+            }
+          }
+        } else if (pattern instanceof RegExp) {
+          const match = appData.match(pattern);
+          if (match) {
+            ctx.match = match;
+            await handler(ctx);
+            return true;
+          }
+        }
+      }
+    }
+
     // 4. Hears (Text pattern matching)
     if (text) {
       for (let i = 0; i < this.hearsRoutes.length; i++) {
@@ -5170,6 +5616,10 @@ export class GramlessRouter {
     if (ctx.raw?.paid_messages_waived || ctx.message?.paid_messages_waived) types.push('paid_messages_waived');
     if (ctx.writeAccessAllowed || ctx.update?.write_access_allowed || ctx.raw?.write_access_allowed || ctx.message?.write_access_allowed) types.push('write_access_allowed');
     if (ctx.inviter || ctx.writeAccessAllowed?.inviter || ctx.raw?.write_access_allowed?.inviter || ctx.message?.write_access_allowed?.inviter) types.push('invited_user');
+    if (ctx.webAppData || ctx.raw?.web_app_data || ctx.message?.web_app_data || ctx.update?.message?.web_app_data) {
+      types.push('web_app_data');
+      types.push('web_app');
+    }
 
     if (ctx.raw?.data !== undefined || ctx.update?.callback_query || (ctx.raw?.chat_instance && (ctx.raw?.id || ctx.raw?.inline_message_id))) types.push('callback_query');
     if (ctx.raw?.query !== undefined || ctx.update?.inline_query) types.push('inline_query');

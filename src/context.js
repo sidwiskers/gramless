@@ -329,6 +329,33 @@ export class GramlessContext {
     return this.writeAccessAllowed?.inviter || null;
   }
 
+  /**
+   * Service message payload received when a Mini App calls Telegram.WebApp.sendData().
+   * @returns {{ data: string, button_text: string } | null}
+   */
+  get webAppData() {
+    return (
+      this.raw.web_app_data ||
+      this.message?.web_app_data ||
+      this.update?.message?.web_app_data ||
+      null
+    );
+  }
+
+  /**
+   * Auto-parsed payload from webAppData.data (parsed as JSON if valid, otherwise raw string).
+   * @returns {any}
+   */
+  get webAppPayload() {
+    const data = this.webAppData?.data;
+    if (!data) return null;
+    try {
+      return JSON.parse(data);
+    } catch {
+      return data;
+    }
+  }
+
   get oldChatMember() {
     return this.raw.old_chat_member || this.update.chat_member?.old_chat_member || this.update.my_chat_member?.old_chat_member || null;
   }
@@ -1165,6 +1192,128 @@ export class GramlessContext {
    */
   async getChatShareThemeBackdrops() {
     return this.call('getChatShareThemeBackdrops', {});
+  }
+
+  /**
+   * Sets the result of an interaction with a Web App and sends a corresponding message
+   * on behalf of the user to the chat from which the query originated.
+   * 
+   * @param {string} webAppQueryId Unique identifier for the query to be answered
+   * @param {Record<string, any>} result InlineQueryResult object
+   * @param {Record<string, any>} [options={}]
+   * @returns {Promise<{ ok: boolean, result?: any }>}
+   */
+  async answerWebAppQuery(webAppQueryId, result, options = {}) {
+    return this.call('answerWebAppQuery', {
+      web_app_query_id: webAppQueryId,
+      result,
+      ...options,
+    });
+  }
+
+  /**
+   * Stores a message that can be sent by a user of a Mini App.
+   * Returns a PreparedInlineMessage object containing an `id` that can be passed to
+   * `Telegram.WebApp.shareMessage(id)`.
+   * 
+   * @param {Record<string, any>} result InlineQueryResult object
+   * @param {Object} [options={}]
+   * @param {number} [options.userId] Target user ID (defaults to ctx.userId)
+   * @param {boolean} [options.allowUserChats=true]
+   * @param {boolean} [options.allowBotChats=true]
+   * @param {boolean} [options.allowGroupChats=true]
+   * @param {boolean} [options.allowChannelChats=true]
+   * @returns {Promise<{ id: string, expiration_date: number }>}
+   */
+  async savePreparedInlineMessage(result, options = {}) {
+    const userId = options.userId || this.userId;
+    if (!userId) {
+      throw new GramlessError('User ID is required to save a prepared inline message (ctx.userId missing)');
+    }
+    const payload = {
+      user_id: userId,
+      result,
+      allow_user_chats: options.allowUserChats ?? options.allow_user_chats ?? true,
+      allow_bot_chats: options.allowBotChats ?? options.allow_bot_chats ?? true,
+      allow_group_chats: options.allowGroupChats ?? options.allow_group_chats ?? true,
+      allow_channel_chats: options.allowChannelChats ?? options.allow_channel_chats ?? true,
+      ...options,
+    };
+    delete payload.allowUserChats;
+    delete payload.allowBotChats;
+    delete payload.allowGroupChats;
+    delete payload.allowChannelChats;
+    delete payload.userId;
+    return this.call('savePreparedInlineMessage', payload);
+  }
+
+  /**
+   * Changes the bot's menu button in a private chat, or the default menu button.
+   * 
+   * @param {Object} [options={}]
+   * @param {number|string} [options.chatId] Target chat (defaults to private chat if in private context)
+   * @param {string} [options.type='web_app'] 'web_app' | 'commands' | 'default'
+   * @param {string} [options.text] Button text (required for web_app)
+   * @param {string} [options.url] Web App URL (for web_app type)
+   * @param {Record<string, any>} [options.menuButton] Raw MenuButton override
+   * @returns {Promise<boolean>}
+   */
+  async setChatMenuButton(options = {}) {
+    const payload = {};
+    if (options.chatId || options.chat_id) {
+      payload.chat_id = options.chatId || options.chat_id;
+    } else if (this.isPrivate && this.chatId) {
+      payload.chat_id = this.chatId;
+    }
+
+    if (options.menuButton || options.menu_button) {
+      payload.menu_button = options.menuButton || options.menu_button;
+    } else if (options.url || options.type === 'web_app') {
+      payload.menu_button = {
+        type: 'web_app',
+        text: options.text || 'Open App',
+        web_app: { url: options.url },
+      };
+    } else if (options.type === 'commands') {
+      payload.menu_button = { type: 'commands' };
+    } else if (options.type === 'default') {
+      payload.menu_button = { type: 'default' };
+    }
+
+    return this.call('setChatMenuButton', payload);
+  }
+
+  /**
+   * Alias for setChatMenuButton.
+   * @param {Object} [options={}]
+   * @returns {Promise<boolean>}
+   */
+  async setMenuButton(options = {}) {
+    return this.setChatMenuButton(options);
+  }
+
+  /**
+   * Gets the current value of the bot's menu button in a private chat, or the default menu button.
+   * @param {Object} [options={}]
+   * @returns {Promise<Record<string, any>>}
+   */
+  async getChatMenuButton(options = {}) {
+    const payload = {};
+    if (options.chatId || options.chat_id) {
+      payload.chat_id = options.chatId || options.chat_id;
+    } else if (this.isPrivate && this.chatId) {
+      payload.chat_id = this.chatId;
+    }
+    return this.call('getChatMenuButton', payload);
+  }
+
+  /**
+   * Alias for getChatMenuButton.
+   * @param {Object} [options={}]
+   * @returns {Promise<Record<string, any>>}
+   */
+  async getMenuButton(options = {}) {
+    return this.getChatMenuButton(options);
   }
 }
 

@@ -14,6 +14,7 @@ const orderedFiles = [
   'errors.js',
   'filters.js',
   'format.js',
+  'webapp.js',
   'init_data.js',
   'pacer.js',
   'stateless_question.js',
