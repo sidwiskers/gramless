@@ -68,6 +68,7 @@ export default defineConfig({
             { text: '06. Group Moderation', link: '/cookbook/06-group-moderation' },
             { text: '07. Lab Testing', link: '/cookbook/07-lab-testing' },
             { text: '08. Migration Guide', link: '/cookbook/08-migration-guide' },
+            { text: '09. Bot Settings & Invites', link: '/cookbook/09-bot-settings-and-invites' },
           ],
         },
       ],
