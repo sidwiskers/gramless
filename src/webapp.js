@@ -5,20 +5,7 @@
  * conforming directly to Telegram design guidelines and theme variables.
  */
 
-/**
- * Escapes HTML characters to prevent XSS.
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-  if (typeof str !== 'string') return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
+import { escapeHtml } from './format.js';
 
 /**
  * Generates the standard Telegram Mini App CSS stylesheet.
